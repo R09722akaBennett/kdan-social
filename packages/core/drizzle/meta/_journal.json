@@ -50,6 +50,20 @@
       "when": 1792504036605,
       "tag": "0006_workspace_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792508648148,
+      "tag": "0007_brand_voice",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792509009000,
+      "tag": "0008_post_metrics",
+      "breakpoints": true
     }
   ]
 }

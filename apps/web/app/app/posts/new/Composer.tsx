@@ -3,8 +3,9 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useActionState, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { clockInZone, dayInZone, zonedTimeToUtc } from '@kdan-social/core/time';
+import { bannedHits } from '@kdan-social/core/voice-rules';
 import { Icon, Pf, PLATFORM, zoneName, type Platform } from '@/components/ui';
-import { createImageUpload, submitPost, type SubmitState } from '../actions';
+import { aiAdaptAction, aiRewriteAction, createImageUpload, submitPost, type AiResult, type SubmitState } from '../actions';
 
 type Group = { id: string; name: string };
 type Account = { id: string; groupId: string | null; timeZone: string; platform: Platform; name: string; status: string };
@@ -55,9 +56,18 @@ export type EditPost = {
   when: string;
 };
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit }: {
+const ACTION_LABEL = { rephrase: '改寫', shorten: '縮短', casual: '更口語', formal: '更正式', tags: '建議標籤', ask: '依你的指示修改' } as const;
+type Action = keyof typeof ACTION_LABEL;
+
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, aiReady, banned }: {
   workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost;
+  aiReady: boolean; banned: string[];
 }) {
+  const [right, setRight] = useState<'ai' | 'preview'>(aiReady ? 'ai' : 'preview');
+  const [aiAction, setAiAction] = useState<Action | null>(null);
+  const [suggestion, setSuggestion] = useState<AiResult | null>(null);
+  const [ask, setAsk] = useState('');
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((edit?.accountIds ?? []).map((id) => [id, true])));
   const [main, setMain] = useState(edit?.main ?? '');
   // Text customised for one account; an account without an entry uses the main text.
@@ -121,6 +131,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
       else checks.push({ tone: 'info', title: `${who}：會群發給全部好友`, detail: cost == null ? '好友數隔天才有資料，暫時無法預估扣多少則。' : `預估扣 ${cost.toLocaleString('en-US')} 則${left != null ? `，本月剩 ${left.toLocaleString('en-US')} 則` : '（方案沒有上限）'}。每位收到的好友扣 1 則，不論訊息有幾段。` });
     }
   }
+  const hits = [...new Set([main, ...chosen.map((a) => custom[a.id] ?? '')].flatMap((t) => bannedHits(t, banned)))];
+  if (hits.length) checks.push({ tone: 'warn', title: `用到品牌語氣的禁用詞：${hits.join('、')}`, detail: '在「品牌語氣」設定為不使用的詞。確認可以用再送出，或改掉它。', href: '/app/voice', action: '看規則' });
   const zones = [...new Set(chosen.map((a) => a.timeZone))];
   if (mode === 'local' && zones.length > 1) checks.push({ tone: 'warn', title: `選到的帳號分在 ${zones.length} 個時區`, detail: `「依各帳號時區」會讓每個帳號在自己的 ${time} 發出（${zones.map(zoneName).join('、')}）。內文若寫了開始時間，讀者會依自己的時區理解。` });
   const blocking = checks.filter((c) => c.tone === 'err').length;
@@ -153,6 +165,29 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
       }
     }
   }
+
+  const runAction = async (k: Action, instruction?: string) => {
+    setRight('ai');
+    setAiAction(k);
+    setSuggestion(null);
+    setAiBusy('main');
+    try {
+      setSuggestion(await aiRewriteAction({ action: k, text: main, instruction }));
+    } finally {
+      setAiBusy(null);
+    }
+  };
+  const adapt = async (ids: string[]) => {
+    setAiBusy(ids.length > 1 ? 'all' : ids[0]!);
+    try {
+      const results = await Promise.all(ids.map(async (id) => [id, await aiAdaptAction({ accountId: id, text: main })] as const));
+      const failed = results.filter(([, r]) => r.error);
+      setCustom((c) => ({ ...c, ...Object.fromEntries(results.filter(([, r]) => r.text).map(([id, r]) => [id, r.text!])) }));
+      if (failed.length) setUploadError(`AI 改寫有 ${failed.length} 個帳號沒有成功：${failed[0]![1].error}`);
+    } finally {
+      setAiBusy(null);
+    }
+  };
 
   const payload = JSON.stringify({
     ...(edit ? { postId: edit.postId } : {}),
@@ -270,7 +305,14 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
             </div>
             {uploadError && <p className="small" style={{ color: 'var(--err)', margin: '0 16px 12px' }}>{uploadError}</p>}
             <div className="row" style={{ padding: '10px 16px', borderTop: '1px solid var(--line-soft)', gap: 6 }}>
-              <span className="tiny muted">圖片會發到所有選取的帳號</span>
+              {aiReady ? (
+                <>
+                  <span style={{ color: 'var(--accent)', display: 'flex' }}><Icon name="spark" size={16} /></span>
+                  {(['rephrase', 'shorten', 'casual', 'formal', 'tags'] as const).map((k) => (
+                    <button key={k} type="button" className="btn btn-sm" disabled={!!aiBusy || !main.trim()} onClick={() => runAction(k)}>{ACTION_LABEL[k]}</button>
+                  ))}
+                </>
+              ) : <span className="tiny muted">圖片會發到所有選取的帳號</span>}
               <span className="spacer small muted num">{main.length} 字</span>
             </div>
           </div>
@@ -284,6 +326,11 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
               <div className="row">
                 <h2 id="h-each" style={{ fontSize: 16 }}>個別調整</h2>
                 <span className="tiny muted">先帶入主要文字；改過的帳號不會再跟著主要文字變動。</span>
+                {aiReady && chosen.length > 0 && (
+                  <button type="button" className="btn btn-sm spacer" disabled={!!aiBusy || !main.trim()} onClick={() => adapt(chosen.map((a) => a.id))}>
+                    <Icon name="spark" size={14} />{aiBusy === 'all' ? 'AI 改寫中…' : 'AI 依帳號改寫全部'}
+                  </button>
+                )}
               </div>
               {chosen.length === 0 && <div className="small muted">先選要發的帳號。</div>}
               <div className="grid" style={{ '--min': '300px' } as CSSProperties}>
@@ -312,6 +359,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
                         </div>
                       )}
                       <div className="row" style={{ padding: '10px 14px', gap: 6, marginTop: 'auto' }}>
+                        {aiReady && <button type="button" className="btn btn-sm" disabled={!!aiBusy || !main.trim()} onClick={() => { setPreviewId(a.id); void adapt([a.id]); }}><Icon name="spark" size={14} />{aiBusy === a.id ? '改寫中…' : 'AI 改寫給這個帳號'}</button>}
                         {own && <button type="button" className="btn btn-sm" onClick={() => setCustom((c) => { const n = { ...c }; delete n[a.id]; return n; })}>改回主要文字</button>}
                         <span className="spacer tiny muted num">{text.length}{limit ? ` / ${limit.toLocaleString('en-US')}` : ''} 字</span>
                       </div>
@@ -342,8 +390,57 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
         </section>
 
         <aside style={{ flex: '1 1 400px', minWidth: 0, padding: '20px 24px 32px', background: '#ECEEF1', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="seg" role="tablist" aria-label="右側面板"><button type="button" role="tab" aria-selected="true">預覽</button></div>
-          {!pvAcc ? (
+          <div className="seg" role="tablist" aria-label="右側面板">
+            {aiReady && <button type="button" role="tab" aria-selected={right === 'ai'} onClick={() => setRight('ai')}>AI 助理</button>}
+            <button type="button" role="tab" aria-selected={right === 'preview'} onClick={() => setRight('preview')}>預覽</button>
+          </div>
+          {right === 'ai' && aiReady && (
+            <div className="stack">
+              <div className="row small">
+                <span style={{ color: 'var(--ink-2)' }}>品牌語氣</span>
+                <a href="/app/voice">看設定</a>
+              </div>
+              <div className="card card-pad stack" style={{ border: 0, gap: 10 }}>
+                {!aiAction && (
+                  <>
+                    <div style={{ fontWeight: 600 }}>快速調整</div>
+                    <div className="small" style={{ color: 'var(--ink-2)' }}>點主要文字下方的「改寫」「縮短」等按鈕，或在下面直接告訴 AI 想怎麼改。結果會先放在這裡，你決定要不要套用。要給不同帳號不同的文字，用「個別調整每個帳號」。</div>
+                  </>
+                )}
+                {aiAction && (
+                  <>
+                    <div className="row" style={{ justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 600 }}>{ACTION_LABEL[aiAction]}</span>
+                      <span className="tiny muted">主要文字</span>
+                    </div>
+                    {suggestion?.error
+                      ? <div className="small" role="alert" style={{ color: 'var(--err)' }}>{suggestion.error}</div>
+                      : <div className="small" style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--sunken)', whiteSpace: 'pre-line', minHeight: 60, color: aiBusy === 'main' ? 'var(--ink-3)' : 'var(--ink)' }}>{aiBusy === 'main' ? '產生中…' : suggestion?.text}</div>}
+                    {suggestion?.banned && suggestion.banned.length > 0 && <span className="tiny" style={{ color: 'var(--err)' }}>含禁用詞：{suggestion.banned.join('、')}</span>}
+                    {suggestion?.text && (
+                      <div className="row" style={{ gap: 6 }}>
+                        {aiAction === 'tags'
+                          ? <button type="button" className="btn btn-sm btn-primary" onClick={() => { setMain(`${main.trimEnd()}\n\n${suggestion.text!.split('\n').map((l) => l.replace(/[（(].*$/, '').trim()).filter((l) => l.startsWith('#')).join(' ')}`); setAiAction(null); }}>加到內文最後</button>
+                          : <button type="button" className="btn btn-sm btn-primary" onClick={() => { setMain(suggestion.text!); setAiAction(null); }}>取代內容</button>}
+                        {aiAction !== 'tags' && <button type="button" className="btn btn-sm" onClick={() => { setMain(`${main}\n\n${suggestion.text}`); setAiAction(null); }}>插在後面</button>}
+                        <button type="button" className="btn btn-sm" disabled={!!aiBusy} onClick={() => runAction(aiAction, aiAction === 'ask' ? ask : undefined)}>再試一次</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="card card-pad stack" style={{ border: 0, gap: 8 }}>
+                <label htmlFor="ask" style={{ fontWeight: 600 }} className="small">想怎麼改？</label>
+                <textarea id="ask" className="textarea small" rows={2} maxLength={500} value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="例：加一句「學生方案也適用」，語氣再客氣一點" />
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <span className="tiny muted">改的是主要文字</span>
+                  <button type="button" className="btn btn-sm btn-dark" disabled={!!aiBusy || !ask.trim() || !main.trim()} onClick={() => runAction('ask', ask)}>送出</button>
+                </div>
+              </div>
+              <div className="tiny" style={{ color: 'var(--ink-2)' }}>AI 產生的內容可能有誤，送出前請確認。AI 不會自行發布或排程。</div>
+            </div>
+          )}
+          {right === 'preview' && (!pvAcc ? (
             <div className="small muted">選帳號後，這裡會顯示貼文在各帳號的樣子。</div>
           ) : (
             <div className="stack">
@@ -383,7 +480,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
                 </div>
               )}
             </div>
-          )}
+          ))}
         </aside>
       </div>
 

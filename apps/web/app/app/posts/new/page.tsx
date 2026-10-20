@@ -1,4 +1,4 @@
-import { lineClient, lineUsage, listAccounts, listGroups, loadKey } from '@kdan-social/core';
+import { aiConfigured, getVoice, lineClient, lineUsage, listAccounts, listGroups, loadKey } from '@kdan-social/core';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { supabaseEnv } from '@/lib/supabase';
@@ -8,10 +8,11 @@ import Composer from './Composer';
 export default async function NewPost() {
   const { workspace, role } = await requireWorkspace();
   const db = getDb();
-  const [groups, accounts, usage] = await Promise.all([
+  const [groups, accounts, usage, voice] = await Promise.all([
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     lineUsage(db, loadKey(), lineClient(), { workspaceId: workspace.id }),
+    getVoice(db, workspace.id),
   ]);
   return (
     <Composer
@@ -20,6 +21,8 @@ export default async function NewPost() {
       groups={groups.map(({ id, name }) => ({ id, name }))}
       accounts={accounts.map(({ id, groupId, timeZone, platform, name, status }) => ({ id, groupId, timeZone, platform, name, status }))}
       supabase={supabaseEnv()}
+      aiReady={aiConfigured()}
+      banned={voice.banned}
       lineUsage={usage.map(({ accountId, quota, audience, error }) => ({ accountId, quota, audience, error }))}
     />
   );

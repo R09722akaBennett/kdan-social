@@ -1,4 +1,4 @@
-import { formatInZone, lineClient, lineUsage, listAccounts, listGroups, loadKey, reviewDetail } from '@kdan-social/core';
+import { aiConfigured, formatInZone, getVoice, lineClient, lineUsage, listAccounts, listGroups, loadKey, reviewDetail } from '@kdan-social/core';
 import { notFound } from 'next/navigation';
 import { zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
@@ -27,10 +27,11 @@ export default async function EditPost({ params }: { params: Promise<{ id: strin
     );
   }
 
-  const [groups, accounts, usage] = await Promise.all([
+  const [groups, accounts, usage, voice] = await Promise.all([
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     lineUsage(db, loadKey(), lineClient(), { workspaceId: workspace.id }),
+    getVoice(db, workspace.id),
   ]);
   // Posts from before the main text was kept fall back to the first version's text.
   const main = d.post.body ?? d.versions[0]?.body ?? '';
@@ -42,6 +43,8 @@ export default async function EditPost({ params }: { params: Promise<{ id: strin
       groups={groups.map(({ id: gid, name }) => ({ id: gid, name }))}
       accounts={accounts.map(({ id: aid, groupId, timeZone, platform, name, status }) => ({ id: aid, groupId, timeZone, platform, name, status }))}
       supabase={supabaseEnv()}
+      aiReady={aiConfigured()}
+      banned={voice.banned}
       lineUsage={usage.map(({ accountId, quota, audience, error }) => ({ accountId, quota, audience, error }))}
       edit={{
         postId: d.post.id,

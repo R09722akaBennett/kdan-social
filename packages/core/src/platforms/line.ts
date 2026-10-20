@@ -1,5 +1,5 @@
 import { form, PlatformError, request, type FetchFn } from './http';
-import type { AccountRef, LineCredentials, PlatformClient } from './types';
+import type { AccountRef, LineCredentials, PlatformClient, PostMetrics } from './types';
 
 const API = 'https://api.line.me';
 
@@ -89,6 +89,19 @@ export function lineClient(fetchFn: FetchFn = fetch): LineClient {
     },
     async followers(account, now) {
       return (await audience(account, now))?.followers ?? null;
+    },
+    async metrics(account, requestId): Promise<PostMetrics> {
+      // A broadcast repeated after a 409 kept our retry key, not LINE's request id, so it has no stats.
+      if (!/^[0-9a-f-]{36}$/i.test(requestId)) return { engagements: null, opens: null, detail: {} };
+      const { body } = await request(fetchFn, 'line', `${API}/v2/bot/insight/message/event?requestId=${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: await auth(account),
+        idempotent: true,
+      });
+      // LINE leaves a count null until at least 20 people did the thing, for privacy.
+      const o = (body as { overview?: Record<string, unknown> }).overview ?? {};
+      const n = (k: string) => (typeof o[k] === 'number' ? (o[k] as number) : null);
+      return { engagements: n('uniqueClick'), opens: n('uniqueImpression'), detail: { delivered: n('delivered'), opens: n('uniqueImpression'), clicks: n('uniqueClick') } };
     },
     audience,
     async botInfo(credentials) {

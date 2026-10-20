@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, changeRole, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, setAccountTimeZone, setPublishing } from '@kdan-social/core';
+import { AccessError, AiError, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -189,4 +189,49 @@ export async function changeRoleAction(formData: FormData) {
 export async function removeMemberAction(formData: FormData) {
   const { user, workspace, role } = await requireWorkspace();
   await memberChange(() => removeMember(getDb(), { workspaceId: workspace.id, userId: String(formData.get('userId')), actor: user.email, actorId: user.id, actorRole: role }), '已移除成員');
+}
+
+export async function saveVoiceAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  let payload: { voice: Voice; groups: Record<string, GroupVoice> };
+  try {
+    payload = JSON.parse(String(formData.get('payload')));
+  } catch {
+    redirect(`/app/voice?error=${encodeURIComponent('送出的資料格式不正確，請重新整理後再試。')}`);
+  }
+  try {
+    await saveVoice(getDb(), { workspaceId: workspace.id, voice: payload.voice, groups: payload.groups, actor: user.email, role });
+  } catch (e) {
+    if (e instanceof VoiceError) redirect(`/app/voice?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app/voice');
+  redirect(`/app/voice?notice=${encodeURIComponent('已儲存，之後 AI 產生的內容會套用新設定')}`);
+}
+
+export type SampleResult = { samples?: Array<{ groupId: string | null; name: string; text: string; banned: string[] }>; error?: string };
+
+/** Try the brand voice page's current, possibly unsaved, settings on a topic. */
+export async function sampleAction(input: { topic: string; voice: Voice; groups: Array<{ id: string; name: string; voice: GroupVoice }> }): Promise<SampleResult> {
+  const { user, workspace } = await requireWorkspace();
+  try {
+    return { samples: await aiSamples(getDb(), aiWriter(), { workspaceId: workspace.id, actor: user.email, ...input }) };
+  } catch (e) {
+    if (e instanceof AiError || e instanceof VoiceError) return { error: e.message };
+    throw e;
+  }
+}
+
+export type InsightsResult = { findings?: string[]; error?: string };
+
+/** AI findings from the analytics page's own numbers, on request. */
+export async function insightsAction(input: { days: number; groups: string[] }): Promise<InsightsResult> {
+  const { user, workspace } = await requireWorkspace();
+  const days = [7, 30, 90].includes(input.days) ? input.days : 30;
+  try {
+    return { findings: await aiInsights(getDb(), aiWriter('insights'), { workspaceId: workspace.id, actor: user.email, days, groupIds: input.groups.map((g) => (g === 'none' ? null : g)) }) };
+  } catch (e) {
+    if (e instanceof AiError) return { error: e.message };
+    throw e;
+  }
 }

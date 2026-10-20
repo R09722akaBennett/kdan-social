@@ -214,3 +214,36 @@ export const auditLog = pgTable(
   },
   (t) => [index('audit_workspace_at').on(t.workspaceId, t.at)],
 );
+
+export type GlossaryEntry = { term: string; rule: string };
+
+/** How the workspace writes. AI prompts are built from this; the composer checks `banned` itself. */
+export const brandVoices = pgTable('brand_voices', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  about: text('about').notNull().default(''),
+  // 0 is most formal / most data-led, 100 most casual / most emotional.
+  formality: integer('formality').notNull().default(40),
+  persuasion: integer('persuasion').notNull().default(30),
+  emoji: text('emoji').$type<'none' | 'few' | 'many'>().notNull().default('few'),
+  banned: jsonb('banned').$type<string[]>().notNull().default([]),
+  glossary: jsonb('glossary').$type<GlossaryEntry[]>().notNull().default([]),
+  updatedBy: text('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Rules a group adds on top of the brand voice, such as the language its accounts write in. */
+export const groupVoices = pgTable('group_voices', {
+  groupId: uuid('group_id').primaryKey().references(() => accountGroups.id, { onDelete: 'cascade' }),
+  rules: text('rules').notNull().default(''),
+  examples: jsonb('examples').$type<string[]>().notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The latest numbers for one published task, refreshed daily for a month after it went out. */
+export const postMetrics = pgTable('post_metrics', {
+  taskId: uuid('task_id').primaryKey().references(() => publishTasks.id, { onDelete: 'cascade' }),
+  engagements: integer('engagements'),
+  opens: integer('opens'),
+  detail: jsonb('detail').$type<Record<string, number | null>>().notNull().default({}),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+});

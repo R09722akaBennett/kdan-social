@@ -16,6 +16,13 @@ export type PublishInput = {
 
 export type PublishResult = { externalPostId: string };
 
+/**
+ * What one published post has earned, in the platform's own terms. `engagements` is the
+ * comparable total (FB reactions + comments + shares, IG likes + comments, LINE clicks);
+ * null means the platform has no number, never zero.
+ */
+export type PostMetrics = { engagements: number | null; opens?: number | null; detail: Record<string, number | null> };
+
 export interface PlatformClient<C = Credentials> {
   readonly platform: Platform;
   /**
@@ -27,4 +34,6 @@ export interface PlatformClient<C = Credentials> {
   publish(account: AccountRef<C>, input: PublishInput): Promise<PublishResult>;
   /** Current follower count, or null when the platform has no number for that day yet. */
   followers(account: AccountRef<C>, now: Date): Promise<number | null>;
+  /** The post's numbers so far, read with the same credentials it was published with. */
+  metrics(account: AccountRef<C>, externalPostId: string): Promise<PostMetrics>;
 }

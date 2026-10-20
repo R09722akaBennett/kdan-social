@@ -46,7 +46,7 @@ export function weekStart(now: Date, timeZone: string): Date {
  */
 export type GroupFilter = Array<string | null> | undefined;
 
-function inGroups(groupIds: GroupFilter): SQL | undefined {
+export function inGroups(groupIds: GroupFilter): SQL | undefined {
   if (!groupIds?.length) return undefined;
   const ids = groupIds.filter((g): g is string => g !== null);
   return or(ids.length ? inArray(connectedAccounts.groupId, ids) : undefined, groupIds.includes(null) ? isNull(connectedAccounts.groupId) : undefined);

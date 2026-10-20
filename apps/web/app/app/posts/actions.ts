@@ -1,6 +1,6 @@
 'use server';
 
-import { ComposeError, createPost, reviewDetail, updatePost, type Schedule } from '@kdan-social/core';
+import { aiAdapt, AiError, aiRewrite, aiWriter, ComposeError, createPost, reviewDetail, updatePost, type RewriteAction, type Schedule } from '@kdan-social/core';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -66,4 +66,28 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   if (target) redirect(target);
   revalidatePath('/app/calendar');
   redirect('/app/calendar?view=list&created=1');
+}
+
+export type AiResult = { text?: string; banned?: string[]; error?: string };
+
+/** A composer quick action on the main text; the suggestion is returned, never applied here. */
+export async function aiRewriteAction(input: { action: RewriteAction; text: string; instruction?: string }): Promise<AiResult> {
+  const { user, workspace } = await requireWorkspace();
+  try {
+    return await aiRewrite(getDb(), aiWriter(), { workspaceId: workspace.id, actor: user.email, ...input });
+  } catch (e) {
+    if (e instanceof AiError) return { error: e.message };
+    throw e;
+  }
+}
+
+/** Rewrite the main text for one account's platform and group. */
+export async function aiAdaptAction(input: { accountId: string; text: string }): Promise<AiResult> {
+  const { user, workspace } = await requireWorkspace();
+  try {
+    return await aiAdapt(getDb(), aiWriter(), { workspaceId: workspace.id, actor: user.email, ...input });
+  } catch (e) {
+    if (e instanceof AiError) return { error: e.message };
+    throw e;
+  }
 }

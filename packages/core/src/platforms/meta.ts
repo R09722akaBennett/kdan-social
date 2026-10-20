@@ -1,5 +1,5 @@
 import { classifyGraph, form, PlatformError, request, type FetchFn } from './http';
-import type { AccountRef, FacebookCredentials, PlatformClient, PublishInput, PublishResult } from './types';
+import type { AccountRef, FacebookCredentials, PlatformClient, PostMetrics, PublishInput, PublishResult } from './types';
 
 // Pin the Graph version so a Meta release cannot change behaviour under us; bump deliberately.
 export const GRAPH_VERSION = 'v25.0';
@@ -7,6 +7,9 @@ const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 type Sleep = (ms: number) => Promise<void>;
 const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+const total = (parts: Array<number | null>) => (parts.every((p) => p === null) ? null : parts.reduce<number>((s, p) => s + (p ?? 0), 0));
 
 function graph(fetchFn: FetchFn, platform: 'facebook' | 'instagram') {
   return {
@@ -57,6 +60,14 @@ export function facebookClient(fetchFn: FetchFn = fetch): PlatformClient<Faceboo
       const res = await g.get(account.externalId, account.credentials.pageAccessToken, 'followers_count');
       return typeof res.followers_count === 'number' ? res.followers_count : null;
     },
+    async metrics(account, postId): Promise<PostMetrics> {
+      // pages_read_engagement covers these counts; reach needs read_insights, which we do not ask for.
+      const res = await g.get(postId, account.credentials.pageAccessToken, 'reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares');
+      const summary = (v: unknown) => num((v as { summary?: { total_count?: unknown } } | undefined)?.summary?.total_count);
+      const detail = { reactions: summary(res.reactions), comments: summary(res.comments), // Graph omits `shares` entirely when nobody has shared the post.
+      shares: num((res.shares as { count?: unknown } | undefined)?.count) ?? 0 };
+      return { engagements: total(Object.values(detail)), detail };
+    },
   };
 }
 
@@ -106,6 +117,11 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
     async followers(account) {
       const res = await g.get(account.externalId, account.credentials.pageAccessToken, 'followers_count');
       return typeof res.followers_count === 'number' ? res.followers_count : null;
+    },
+    async metrics(account, mediaId): Promise<PostMetrics> {
+      const res = await g.get(mediaId, account.credentials.pageAccessToken, 'like_count,comments_count');
+      const detail = { likes: num(res.like_count), comments: num(res.comments_count) };
+      return { engagements: total(Object.values(detail)), detail };
     },
   };
 }

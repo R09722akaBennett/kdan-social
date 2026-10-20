@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./db": "./src/db/index.ts",
-    "./time": "./src/time.ts"
+    "./time": "./src/time.ts",
+    "./voice-rules": "./src/voice-rules.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -16,7 +17,11 @@
     "workspace:bootstrap": "tsx scripts/bootstrap-workspace.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@anthropic-ai/vertex-sdk": "^0.21.0",
+    "@google/genai": "^2.30.0",
     "drizzle-orm": "0.45.4",
+    "google-auth-library": "^10.9.1",
     "pg": "^8.23.1"
   },
   "devDependencies": {
