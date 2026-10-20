@@ -1,7 +1,7 @@
 import { listMarkets } from '@kdan-social/core';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { connectLineAccount } from '../../actions';
+import { connectLineAccount } from '@/app/app/actions';
 
 export default async function ConnectLine({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { workspace } = await requireWorkspace();

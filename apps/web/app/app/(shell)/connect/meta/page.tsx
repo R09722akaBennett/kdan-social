@@ -2,7 +2,7 @@ import { listMarkets, loadKey, pendingMetaConnect } from '@kdan-social/core';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { saveMetaConnection } from '../../actions';
+import { saveMetaConnection } from '@/app/app/actions';
 
 // Guess a page's market from its name; the user can always change it.
 function guessMarket(name: string, markets: Array<{ id: string; code: string }>) {

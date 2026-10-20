@@ -4,7 +4,7 @@ import { AppShell, NavLinks, type NavItem } from '@/components/AppShell';
 import { Icon, localTime } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { signOut } from './actions';
+import { signOut } from '@/app/app/actions';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user, membership } = await currentMember();

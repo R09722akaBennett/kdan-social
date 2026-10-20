@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { langName, Mk, Pf, PLATFORM, fmtN } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { queueTest } from '../actions';
+import { queueTest } from '@/app/app/actions';
 
 const KIND = { facebook: 'Facebook 粉專', instagram: 'Instagram 商業帳號', line: 'LINE 官方帳號' } as const;
 

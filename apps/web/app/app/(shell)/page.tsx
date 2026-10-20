@@ -15,7 +15,7 @@ import type { CSSProperties } from 'react';
 import { Chip, Icon, localTime, Mk, Pf, SegLinks, fmtN } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { signOut, togglePublishing } from './actions';
+import { signOut, togglePublishing } from '@/app/app/actions';
 
 const NOTICE: Record<string, [string, string]> = {
   connected: ['ok', '已連結 {n} 個帳號。'],
