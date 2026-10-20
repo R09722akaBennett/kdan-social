@@ -14,7 +14,11 @@
 
 ## 1. Supabase
 
-1. 建專案，區域選 **Tokyo（ap-northeast-1）**，離台灣、日本都近。
+1. 建專案。目前的專案（`pfpxjjgzrbddmkkerjlj`）在 **Singapore（ap-southeast-1）**，Vercel 函式區域
+   也設成 `sin1` 和它同區；兩者不同區時，每次查詢都要多跑一趟跨國往返。
+   所有資料表都開了 RLS 且不設 policy（migration `0002_enable_rls`）：Supabase 會把 `public`
+   的表透過 Data API 開放給持有 publishable key 的人，RLS 讓那條路什麼都拿不到；
+   app 用資料庫擁有者帳號直連，不受影響。新增資料表時要一起開，`test/schema.test.ts` 會檢查。
 2. 到 Project Settings → Database 取兩組連線字串：
    - **Transaction pooler（port 6543）**：給 Vercel 上的 app 用，設成 Vercel 的 `DATABASE_URL`。
      serverless 每次呼叫都可能開新連線，直連很快就會用完連線數。
@@ -36,8 +40,24 @@
    | `KDAN_SOCIAL_SECRET_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` 產生；換掉會讓所有帳號都要重新連結 |
    | `CRON_SECRET` | 隨機長字串，同一個值也要放進 Supabase Vault（下一步） |
    | `PUBLISHING_ENABLED` | `0`。確認流程都沒問題後才改成 `1` |
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co`（公開值） |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 的 publishable key（公開值，靠 RLS 保護資料） |
+   | `META_APP_ID` | Meta app 的 App ID |
+   | `META_APP_SECRET` | Meta app 的 App Secret |
 
-3. Function 區域選 Tokyo（`hnd1`），和資料庫同區。
+3. Function 區域設成和 Supabase 同區（目前是 `sin1`）。
+
+## 登入與 Meta 授權
+
+- **Supabase Auth**：Site URL 設正式網址；Redirect URLs 加 `<正式網址>/auth/callback`
+  與 `http://localhost:3000/auth/callback`。登入用 Email 連結，免費方案每小時能寄的信很少，
+  內部使用足夠。
+- **新成員**：登入一次後還不屬於任何工作區，要由管理員加入（目前用資料庫腳本）。
+- **Meta app**：兩個用途「Manage everything on your Page」與「Manage messaging & content on
+  Instagram（API setup with Facebook Login）」，權限要包含 `META_SCOPES`
+  （`packages/core/src/platforms/meta-oauth.ts`）列出的每一項；Facebook Login for Business 的
+  Valid OAuth Redirect URIs 填 `<正式網址>/api/meta/callback`。app 在開發模式時，只有在 app
+  有角色的人能授權。
 
 ## 3. Supabase Cron 每分鐘呼叫派送
 
