@@ -1,17 +1,26 @@
-import { globalPublishingEnabled, lineClient, lineUsage, listAccounts, listMarkets, loadKey, publishingAllowed, recentTasks } from '@kdan-social/core';
+import {
+  clockInZone,
+  dayInZone,
+  followerStats,
+  formatInZone,
+  globalPublishingEnabled,
+  listAccounts,
+  listMarkets,
+  overviewCounts,
+  publishingAllowed,
+  upcomingTasks,
+  type ScheduledTask,
+} from '@kdan-social/core';
+import type { CSSProperties } from 'react';
+import { Chip, Icon, localTime, Mk, Pf, SegLinks, fmtN } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { queueTest, signOut, togglePublishing } from './actions';
+import { signOut, togglePublishing } from './actions';
 
-const PF: Record<string, string> = { facebook: 'f', instagram: 'IG', line: 'L' };
-const STATUS: Record<string, [string, string]> = {
-  scheduled: ['plan', '已排程'], running: ['plan', '發送中'], published: ['ok', '已發布'], dry_run: ['neutral', 'dry-run'],
-  failed: ['err', '失敗'], needs_check: ['warn', '需人工確認'], missed: ['warn', '未核准，已略過'],
-};
 const NOTICE: Record<string, [string, string]> = {
   connected: ['ok', '已連結 {n} 個帳號。'],
   line_connected: ['ok', '已連結 LINE 官方帳號「{n}」。'],
-  test_queued: ['ok', '已排入一則測試貼文，一分鐘內會被處理成 dry-run，重新整理即可看到結果。'],
+  test_queued: ['ok', '已排入一則測試貼文，一分鐘內會被處理成 dry-run，可到行事曆查看結果。'],
   test_refused: ['err', '對外發文已開啟，測試貼文會真的發出去，所以沒有排入。'],
   meta_cancelled: ['warn', '你在 Facebook 取消了授權，沒有連結任何帳號。'],
   meta_state: ['err', '授權驗證失敗（可能是連結過期或被竄改），請重新連結。'],
@@ -24,11 +33,21 @@ const NOTICE: Record<string, [string, string]> = {
   confirm_needed: ['err', '開啟前請先勾選確認。'],
   owner_only: ['err', '只有工作區擁有者可以切換對外發文。'],
 };
-const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) : '—');
 
-export default async function Workspace({ searchParams }: { searchParams: Promise<{ notice?: string; n?: string }> }) {
+const reconnectHref = (platform: string) => (platform === 'line' ? '/app/connect/line' : '/api/meta/connect');
+const SHORT = { facebook: 'FB', instagram: 'IG', line: 'LINE' } as const;
+const SEVERITY = ['err', 'warn', 'plan'];
+
+function taskChip(t: ScheduledTask): ['plan' | 'warn' | 'err', string] {
+  if (t.accountStatus !== 'active') return ['err', `${SHORT[t.platform]} 會失敗`];
+  if (t.review === 'pending') return ['warn', '待審核'];
+  if (t.review === 'changes_requested') return ['err', '要求修改'];
+  return ['plan', '已排程'];
+}
+
+export default async function Overview({ searchParams }: { searchParams: Promise<{ market?: string; notice?: string; n?: string }> }) {
   const { user, membership } = await currentMember();
-  const { notice, n } = await searchParams;
+  const { market: marketCode, notice, n } = await searchParams;
 
   if (!membership) {
     return (
@@ -41,106 +60,160 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
   }
 
   const db = getDb();
-  const { workspace } = membership;
-  const [markets, accounts, tasks, usage] = await Promise.all([
-    listMarkets(db, workspace.id),
+  const { workspace, role } = membership;
+  const markets = await listMarkets(db, workspace.id);
+  const focus = markets.find((m) => m.code === marketCode);
+  const shownMarkets = focus ? [focus] : markets;
+  const [accounts, followers, counts, upcoming] = await Promise.all([
     listAccounts(db, workspace.id),
-    recentTasks(db, workspace.id),
-    lineUsage(db, loadKey(), lineClient(), { workspaceId: workspace.id }),
+    followerStats(db, workspace.id),
+    overviewCounts(db, { workspaceId: workspace.id, marketId: focus?.id }),
+    upcomingTasks(db, { workspaceId: workspace.id, marketId: focus?.id, limit: 30 }),
   ]);
-  const fmtN = (n: number) => n.toLocaleString('en-US');
+  const shownAccounts = accounts.filter((a) => shownMarkets.some((m) => m.id === a.marketId));
+  const expired = shownAccounts.filter((a) => a.status !== 'active');
+  const withCounts = shownAccounts.filter((a) => followers.has(a.id));
+  const total = withCounts.reduce((s, a) => s + followers.get(a.id)!.followers, 0);
+  const deltas = withCounts.map((a) => followers.get(a.id)!.delta7).filter((d): d is number => d !== null);
+  const delta = deltas.reduce((s, d) => s + d, 0);
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
   const note = notice ? NOTICE[notice] : undefined;
+  const today = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+
+  // One row per post, with a chip for each market it goes to.
+  const byPost = new Map<string, ScheduledTask[]>();
+  for (const t of upcoming) byPost.set(t.postId, [...(byPost.get(t.postId) ?? []), t]);
+  const rows = [...byPost.values()].slice(0, 6);
 
   return (
-    <main className="main" style={{ maxWidth: 1100, margin: '0 auto' }}>
+    <main className="main">
       <header className="page-head">
         <div>
-          <h1>{workspace.name}</h1>
-          <div className="sub">{user.email} · {membership.role}</div>
+          <h1>總覽</h1>
+          <div className="sub">{workspace.name} · {today} · 以台北時間顯示</div>
         </div>
         <div className="row">
-          <a className="btn" href="/api/meta/connect">連結 Facebook 粉專</a>
-          <a className="btn" href="/app/connect/line">連結 LINE 官方帳號</a>
+          <SegLinks label="市場" items={[{ href: '/app', text: '全部市場', on: !focus }, ...markets.map((m) => ({ href: `/app?market=${m.code}`, text: m.name, on: focus?.id === m.id }))]} />
+          <a href="/app/posts/new" className="btn btn-primary">新增貼文</a>
         </div>
       </header>
+
+      {note && <div className={`chip chip-${note[0]}`} role="status" style={{ height: 'auto', padding: '10px 14px', fontSize: 14 }}>{note[1].replace('{n}', n ?? '0')}</div>}
+
+      {expired[0] && (
+        <section className="alert" aria-label="需要處理">
+          <span style={{ color: 'var(--err)', display: 'flex' }}><Icon name="alert" size={20} stroke={2} /></span>
+          <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+            <div className="title">{markets.find((m) => m.id === expired[0]!.marketId)?.name}「{expired[0].name}」的授權已失效{expired.length > 1 ? `（另有 ${expired.length - 1} 個帳號）` : ''}</div>
+            <div className="body">這些帳號排定的貼文會發不出去。重新連結後，貼文會照原時間發布。</div>
+          </div>
+          <a className="btn btn-danger" href={reconnectHref(expired[0].platform)}>重新連結</a>
+        </section>
+      )}
 
       <section className="card card-pad row" style={{ gap: '10px 16px', borderColor: live ? 'var(--err-line)' : 'var(--line)' }} aria-label="對外發文">
         <div style={{ flex: '1 1 320px' }}>
           <div style={{ fontWeight: 600 }}>對外發文：{live ? '開啟，到時間的貼文會真的發出' : '關閉，到時間的貼文只記錄為 dry-run'}</div>
-          <div className="small muted">
-            工作區開關：{workspace.publishingEnabled ? '開' : '關'} · 系統總開關：{globalPublishingEnabled() ? '開' : '關（由系統管理員控制）'}。兩個都開才會真的發文。
-          </div>
+          <div className="small muted">工作區開關：{workspace.publishingEnabled ? '開' : '關'} · 系統總開關：{globalPublishingEnabled() ? '開' : '關（由系統管理員控制）'}。兩個都開才會真的發文。</div>
         </div>
-        {membership.role === 'owner' && (
+        {role === 'owner' && (
           <form action={togglePublishing} className="row">
             <input type="hidden" name="enable" value={workspace.publishingEnabled ? '0' : '1'} />
-            {!workspace.publishingEnabled && (
-              <label className="row small" style={{ cursor: 'pointer' }}><input type="checkbox" name="confirm" style={{ accentColor: 'var(--err)' }} />我了解開啟後貼文會真的發到粉專</label>
-            )}
+            {!workspace.publishingEnabled && <label className="row small" style={{ cursor: 'pointer' }}><input type="checkbox" name="confirm" style={{ accentColor: 'var(--err)' }} />我了解開啟後貼文會真的發到粉專</label>}
             <button className={`btn ${workspace.publishingEnabled ? '' : 'btn-danger'}`} type="submit">{workspace.publishingEnabled ? '關閉工作區發文' : '開啟工作區發文'}</button>
           </form>
         )}
       </section>
 
-      {note && <div className={`chip chip-${note[0]}`} role="status" style={{ height: 'auto', padding: '10px 14px', fontSize: 14 }}>{note[1].replace('{n}', n ?? '0')}</div>}
+      <section className="grid" style={{ '--min': '200px' } as CSSProperties} aria-label="數字">
+        <a href="/app/analytics" className="card stat">
+          <span className="small muted">總粉絲數（{shownAccounts.length} 個帳號）</span>
+          <span className="value">{withCounts.length ? fmtN(total) : '—'}</span>
+          <span className="small" style={{ color: deltas.length ? 'var(--ok)' : 'var(--ink-3)' }}>
+            {!withCounts.length ? '每天 00:30 更新，明天起會有數字' : deltas.length ? `${delta >= 0 ? '+' : ''}${fmtN(delta)} 近 7 天` : '累積滿 7 天後會顯示變化'}
+          </span>
+        </a>
+        <a href="/app/calendar" className="card stat">
+          <span className="small muted">本週已發布</span>
+          <span className="value">{counts.published.posts} 篇</span>
+          <span className="small muted">共 {counts.published.tasks} 個發文任務</span>
+        </a>
+        <a href="/app/approvals" className="card stat">
+          <span className="small muted">待審核</span>
+          <span className="value">{counts.pendingReview.posts} 篇</span>
+          <span className="small" style={{ color: counts.pendingReview.posts ? 'var(--warn)' : 'var(--ink-3)' }}>{counts.pendingReview.posts ? `${counts.pendingReview.tasks} 個帳號版本等核准` : '沒有待審貼文'}</span>
+        </a>
+        <a href="/app/calendar" className="card stat">
+          <span className="small muted">發布失敗</span>
+          <span className="value">{counts.failed.tasks} 個任務</span>
+          <span className="small" style={{ color: counts.failed.tasks ? 'var(--err)' : 'var(--ink-3)' }}>{counts.failed.tasks ? '近 7 天，看原因與重試' : '近 7 天沒有失敗'}</span>
+        </a>
+      </section>
 
-      {markets.map((m) => {
-        const list = accounts.filter((a) => a.marketId === m.id);
-        return (
-          <section key={m.id} className="card" style={{ overflow: 'hidden' }}>
-            <div className="row" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line-soft)' }}>
-              <span className="mk dark">{m.code}</span><h2>{m.name}</h2><span className="small muted">{m.timeZone}</span>
-            </div>
-            {list.length === 0 && <div className="list-row small muted">還沒有連結帳號。</div>}
-            {list.map((a) => (
-              <div key={a.id} className="list-row" style={{ background: a.status === 'active' ? '#fff' : '#FFFAF9' }}>
-                <span className={`pf pf-${a.platform} lg`} aria-label={a.platform}>{PF[a.platform]}</span>
-                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{a.name}</div>
-                  <div className="tiny muted">{a.platform} · {a.externalId}</div>
+      <section className="stack" aria-labelledby="h-markets">
+        <h2 id="h-markets">各市場</h2>
+        <div className="grid" style={{ '--min': '300px' } as CSSProperties}>
+          {shownMarkets.map((m) => {
+            const list = accounts.filter((a) => a.marketId === m.id);
+            const next = upcoming.find((t) => t.marketId === m.id);
+            return (
+              <div key={m.id} className="card">
+                <div className="row" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line-soft)', gap: 10 }}>
+                  <Mk code={m.code} dark />
+                  <span style={{ fontWeight: 600 }}>{m.name}</span>
+                  <span className="spacer tiny muted num">當地 {localTime(m.timeZone)}</span>
                 </div>
-                <div style={{ flex: '1 1 220px' }} className="small">
-                  {a.status === 'active'
-                    ? <span style={{ color: 'var(--ok)' }}>正常{a.lastCheckedAt ? `（${fmt(a.lastCheckedAt)} 檢查過）` : ''}</span>
-                    : <span style={{ color: 'var(--err)' }}>授權失效：{a.statusDetail ?? '請重新連結'}</span>}
-                  {a.platform === 'line' && (() => {
-                    const u = usage.find((x) => x.accountId === a.id);
-                    if (!u) return null;
-                    if (u.error) return <div className="tiny" style={{ color: 'var(--warn)' }}>{u.error}</div>;
-                    return (
-                      <div className="tiny muted">
-                        本月已用 {fmtN(u.quota?.used ?? 0)}{u.quota?.limit != null ? ` / ${fmtN(u.quota.limit)}` : ''} 則
-                        {u.audience ? ` · 可觸及 ${fmtN(u.audience.targetedReaches)} 人（好友 ${fmtN(u.audience.followers)}）` : ' · 好友數隔天才有資料'}
-                      </div>
-                    );
-                  })()}
+                {list.length === 0 && <div className="small muted" style={{ padding: '10px 16px' }}>還沒有連結帳號。<a href="/app/channels">去連結</a></div>}
+                {list.map((a) => {
+                  const f = followers.get(a.id);
+                  const bad = a.status !== 'active';
+                  const tag = bad ? '授權失效' : f?.delta7 != null ? `${f.delta7 >= 0 ? '+' : ''}${fmtN(f.delta7)}` : '';
+                  return (
+                    <div key={a.id} className="row" style={{ padding: '10px 16px', gap: 10, flexWrap: 'nowrap' }}>
+                      <Pf pf={a.platform} />
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                      <span className="num" style={{ fontWeight: 500 }}>{f ? fmtN(f.followers) : '—'}</span>
+                      <span className="tiny" style={{ width: 64, textAlign: 'right', color: bad ? 'var(--err)' : 'var(--ok)' }}>{tag}</span>
+                    </div>
+                  );
+                })}
+                <div className="small" style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--line-soft)', color: 'var(--ink-2)' }}>
+                  下一篇：{next ? `${formatInZone(next.runAt, m.timeZone)} ${next.title}` : '尚無排程'}
                 </div>
-                {a.status === 'active' && !live && (
-                  <form action={queueTest}>
-                    <input type="hidden" name="accountId" value={a.id} />
-                    <button className="btn btn-sm" type="submit">送一則測試 dry-run</button>
-                  </form>
-                )}
-                {a.status !== 'active' && <a className="btn btn-sm btn-danger" href={a.platform === 'line' ? '/app/connect/line' : '/api/meta/connect'}>重新連結</a>}
               </div>
-            ))}
-          </section>
-        );
-      })}
+            );
+          })}
+        </div>
+      </section>
 
       <section className="card">
-        <div className="card-head"><h2>最近的發文任務</h2><span className="tiny muted">時間為台北時間</span></div>
-        {tasks.length === 0 && <div className="list-row small muted">還沒有任何任務。</div>}
-        {tasks.map((t) => {
-          const [tone, label] = STATUS[t.status] ?? ['neutral', t.status];
+        <div className="card-head">
+          <h2>即將發布</h2>
+          <a href="/app/calendar" className="small">看行事曆</a>
+        </div>
+        {rows.length === 0 && <div className="list-row small muted">沒有排程中的貼文。<a href="/app/posts/new">新增貼文</a></div>}
+        {rows.map((tasks) => {
+          const first = tasks[0]!;
+          const md = dayInZone(first.runAt, 'Asia/Taipei');
+          const hm = clockInZone(first.runAt, 'Asia/Taipei');
+          const codes = [...new Set(tasks.map((t) => t.marketCode))];
           return (
-            <div key={t.id} className="list-row small">
-              <span className="num" style={{ width: 110 }}>{fmt(t.runAt)}</span>
-              <span style={{ flex: '1 1 200px' }}>{t.title}</span>
-              <span style={{ flex: '1 1 160px' }} className="muted">{t.account}</span>
-              <span className={`chip chip-${tone}`}>{label}</span>
-              {t.lastError && <span className="tiny" style={{ flexBasis: '100%', color: 'var(--ink-2)' }}>{t.lastError}</span>}
+            <div key={first.postId} className="list-row">
+              <div style={{ width: 96, display: 'flex', flexDirection: 'column' }}>
+                <span className="num" style={{ fontWeight: 600 }}>{hm}</span>
+                <span className="tiny muted">{md}</span>
+              </div>
+              <div style={{ flex: '1 1 260px', minWidth: 0 }}>{first.title}</div>
+              <div className="row" style={{ gap: 6 }}>
+                {codes.map((code) => {
+                  const [tone, label] = tasks.filter((t) => t.marketCode === code).map(taskChip).sort((a, b) => SEVERITY.indexOf(a[0]) - SEVERITY.indexOf(b[0]))[0]!;
+                  return (
+                    <a key={code} href={tone === 'warn' ? '/app/approvals' : '/app/calendar'} style={{ color: 'inherit' }}>
+                      <Chip tone={tone}><strong>{code}</strong>{label}</Chip>
+                    </a>
+                  );
+                })}
+              </div>
             </div>
           );
         })}

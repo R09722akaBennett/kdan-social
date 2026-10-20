@@ -180,3 +180,8 @@ th:last-child, td:last-child { padding-right: 18px; }
   /* The action bar holds four controls that wrap to ~250px tall on a phone; pinned, it hides a third of the editor. */
   .compose-footer { position: static !important; }
 }
+
+/* SegLinks renders the segmented control with anchors instead of buttons. */
+.seg a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--ink); }
+.seg a:hover { color: var(--ink); }
+.seg a[aria-pressed='true'] { background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(20,24,30,.08); }

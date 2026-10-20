@@ -37,6 +37,6 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
     if (e instanceof ComposeError) return { error: e.message };
     throw e;
   }
-  revalidatePath('/app/posts');
-  redirect('/app/posts?created=1');
+  revalidatePath('/app/calendar');
+  redirect('/app/calendar?view=list&created=1');
 }
