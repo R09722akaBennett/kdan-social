@@ -1,5 +1,6 @@
 import 'server-only';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 export function supabaseEnv() {
@@ -24,4 +25,15 @@ export async function supabaseServer() {
       },
     },
   });
+}
+
+/**
+ * A Supabase client with the secret key, for server-only work such as signing uploads.
+ * It bypasses RLS, so it must never reach a browser or act on unchecked input.
+ */
+export function supabaseAdmin() {
+  const { url } = supabaseEnv();
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!secret) throw new Error('SUPABASE_SECRET_KEY is not set');
+  return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
 }

@@ -1,7 +1,7 @@
 import { globalPublishingEnabled, listAccounts, listMarkets, publishingAllowed, recentTasks } from '@kdan-social/core';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { queueTest, signOut } from './actions';
+import { queueTest, signOut, togglePublishing } from './actions';
 
 const PF: Record<string, string> = { facebook: 'f', instagram: 'IG', line: 'L' };
 const STATUS: Record<string, [string, string]> = {
@@ -18,6 +18,10 @@ const NOTICE: Record<string, [string, string]> = {
   meta_denied: ['err', 'Facebook 拒絕了授權，請重新連結並允許所有要求的權限。'],
   meta_failed: ['err', '和 Facebook 連線失敗，請稍後再試。'],
   meta_expired: ['err', '這次授權已過期（15 分鐘），請重新連結。'],
+  publishing_on: ['warn', '已開啟對外發文：之後到時間的貼文會真的發出。'],
+  publishing_off: ['ok', '已關閉對外發文：之後到時間的貼文只會記錄為 dry-run。'],
+  confirm_needed: ['err', '開啟前請先勾選確認。'],
+  owner_only: ['err', '只有工作區擁有者可以切換對外發文。'],
 };
 const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d) : '—');
 
@@ -49,11 +53,27 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
           <div className="sub">{user.email} · {membership.role}</div>
         </div>
         <div className="row">
-          <span className={`chip chip-${live ? 'err' : 'neutral'}`} style={{ height: 32 }}>對外發文：{live ? '開啟（會真的發出）' : '關閉（只記錄 dry-run）'}</span>
-          <a className="btn btn-primary" href="/api/meta/connect">連結 Facebook 粉專</a>
-          <form action={signOut}><button className="btn" type="submit">登出</button></form>
+          <a className="btn" href="/api/meta/connect">連結 Facebook 粉專</a>
         </div>
       </header>
+
+      <section className="card card-pad row" style={{ gap: '10px 16px', borderColor: live ? 'var(--err-line)' : 'var(--line)' }} aria-label="對外發文">
+        <div style={{ flex: '1 1 320px' }}>
+          <div style={{ fontWeight: 600 }}>對外發文：{live ? '開啟，到時間的貼文會真的發出' : '關閉，到時間的貼文只記錄為 dry-run'}</div>
+          <div className="small muted">
+            工作區開關：{workspace.publishingEnabled ? '開' : '關'} · 系統總開關：{globalPublishingEnabled() ? '開' : '關（由系統管理員控制）'}。兩個都開才會真的發文。
+          </div>
+        </div>
+        {membership.role === 'owner' && (
+          <form action={togglePublishing} className="row">
+            <input type="hidden" name="enable" value={workspace.publishingEnabled ? '0' : '1'} />
+            {!workspace.publishingEnabled && (
+              <label className="row small" style={{ cursor: 'pointer' }}><input type="checkbox" name="confirm" style={{ accentColor: 'var(--err)' }} />我了解開啟後貼文會真的發到粉專</label>
+            )}
+            <button className={`btn ${workspace.publishingEnabled ? '' : 'btn-danger'}`} type="submit">{workspace.publishingEnabled ? '關閉工作區發文' : '開啟工作區發文'}</button>
+          </form>
+        )}
+      </section>
 
       {note && <div className={`chip chip-${note[0]}`} role="status" style={{ height: 'auto', padding: '10px 14px', fontSize: 14 }}>{note[1].replace('{n}', n ?? '0')}</div>}
 

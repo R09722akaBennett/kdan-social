@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, completeMetaConnect, globalPublishingEnabled, loadKey, queueDryRunTest } from '@kdan-social/core';
+import { AccessError, ComposeError, completeMetaConnect, globalPublishingEnabled, loadKey, queueDryRunTest, setPublishing } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -45,4 +45,18 @@ export async function signOut() {
   const supabase = await supabaseServer();
   await supabase.auth.signOut();
   redirect('/login');
+}
+
+export async function togglePublishing(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  const enable = formData.get('enable') === '1';
+  if (enable && formData.get('confirm') !== 'on') redirect('/app?notice=confirm_needed');
+  try {
+    await setPublishing(getDb(), { workspaceId: workspace.id, enabled: enable, actor: user.email, role });
+  } catch (e) {
+    if (e instanceof ComposeError) redirect('/app?notice=owner_only');
+    throw e;
+  }
+  revalidatePath('/app');
+  redirect(`/app?notice=${enable ? 'publishing_on' : 'publishing_off'}`);
 }
