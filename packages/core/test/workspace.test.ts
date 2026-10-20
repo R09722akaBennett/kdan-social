@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { accountContext, decrypt } from '../src/crypto';
 import { auditLog, connectedAccounts, metaConnectSessions, publishTasks } from '../src/db/index';
 import { createClients } from '../src/index';
-import { exchangeCodeForPages, metaLoginUrl } from '../src/platforms/meta-oauth';
+import { exchangeCodeForPages, META_SCOPES, metaLoginUrl } from '../src/platforms/meta-oauth';
 import { dispatchDue } from '../src/publish/dispatch';
 import {
   AccessError,
@@ -47,12 +47,22 @@ describe('exchangeCodeForPages', () => {
       .on('GET', /oauth\/access_token\?.*code=/, { body: { access_token: 'short' } })
       .on('GET', /oauth\/access_token\?.*fb_exchange_token=/, { body: { access_token: 'long' } })
       .on('GET', /me\/accounts\?.*access_token=long/, { body: { data: [{ id: 'p1', name: 'A', access_token: 't1', instagram_business_account: { id: 'ig1', username: 'a' } }], paging: { next: 'https://graph.facebook.com/v25.0/me/accounts?after=x' } } })
-      .on('GET', /me\/accounts\?after=x/, { body: { data: [{ id: 'p2', name: 'B', access_token: 't2' }] } });
-    const pages = await exchangeCodeForPages(f.fn, app, 'the-code');
+      .on('GET', /me\/accounts\?after=x/, { body: { data: [{ id: 'p2', name: 'B', access_token: 't2' }] } })
+      .on('GET', /me\/permissions/, { body: { data: META_SCOPES.map((permission) => ({ permission, status: 'granted' })) } });
+    const { pages, missing } = await exchangeCodeForPages(f.fn, app, 'the-code');
+    expect(missing).toEqual([]);
     expect(pages).toEqual([
       { id: 'p1', name: 'A', token: 't1', instagram: { id: 'ig1', username: 'a' } },
       { id: 'p2', name: 'B', token: 't2', instagram: null },
     ]);
+  });
+
+  it('reports the scopes the user unticked in the dialog', async () => {
+    const f = fakeFetch()
+      .on('GET', /oauth\/access_token/, { body: { access_token: 'long' } })
+      .on('GET', /me\/accounts/, { body: { data: [] } })
+      .on('GET', /me\/permissions/, { body: { data: META_SCOPES.map((permission) => ({ permission, status: ['read_insights', 'pages_manage_posts'].includes(permission) ? 'declined' : 'granted' })) } });
+    expect((await exchangeCodeForPages(f.fn, app, 'c')).missing).toEqual(['pages_manage_posts', 'read_insights']);
   });
 
   it('keeps the code and secret out of the error when Meta rejects the code', async () => {

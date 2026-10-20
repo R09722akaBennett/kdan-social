@@ -11,7 +11,15 @@ export const META_SCOPES = [
   'business_management',
   'instagram_basic',
   'instagram_content_publish',
+  // Reach and views; optional, so a connection without them still publishes.
+  'read_insights',
+  'instagram_manage_insights',
 ];
+
+/** Scopes without which a connected account can still publish, only with fewer numbers. */
+export const OPTIONAL_META_SCOPES = ['read_insights', 'instagram_manage_insights'];
+
+export type MetaGrant = { pages: MetaPage[]; missing: string[] };
 
 export type MetaApp = { appId: string; appSecret: string; redirectUri: string };
 
@@ -34,7 +42,8 @@ async function getJson(fetchFn: FetchFn, url: string) {
 }
 
 /**
- * Turn the dialog's `code` into every Page the user granted, each with its own token.
+ * Turn the dialog's `code` into every Page the user granted, each with its own token, and
+ * the requested scopes the user unticked in the dialog.
  *
  * The short-lived user token from the code is exchanged for a long-lived one first:
  * Page tokens inherit their lifetime from the user token they were read with, and only
@@ -43,7 +52,7 @@ async function getJson(fetchFn: FetchFn, url: string) {
  * Raises:
  *   PlatformError: the code was already used or expired (`invalid`), or Meta refused.
  */
-export async function exchangeCodeForPages(fetchFn: FetchFn, app: MetaApp, code: string): Promise<MetaPage[]> {
+export async function exchangeCodeForPages(fetchFn: FetchFn, app: MetaApp, code: string): Promise<MetaGrant> {
   const short = await getJson(fetchFn, `${GRAPH}/oauth/access_token?${form({ client_id: app.appId, client_secret: app.appSecret, redirect_uri: app.redirectUri, code })}`);
   const long = await getJson(fetchFn, `${GRAPH}/oauth/access_token?${form({ grant_type: 'fb_exchange_token', client_id: app.appId, client_secret: app.appSecret, fb_exchange_token: String(short.access_token) })}`);
 
@@ -57,5 +66,8 @@ export async function exchangeCodeForPages(fetchFn: FetchFn, app: MetaApp, code:
     }
     url = (res.paging as { next?: string } | undefined)?.next;
   }
-  return pages;
+  // The dialog lets people untick permissions, so what was asked for is not what was given.
+  const perms = await getJson(fetchFn, `${GRAPH}/me/permissions?${form({ access_token: String(long.access_token) })}`);
+  const granted = new Set(((perms.data as Array<{ permission?: string; status?: string }> | undefined) ?? []).filter((p) => p.status === 'granted').map((p) => String(p.permission)));
+  return { pages, missing: META_SCOPES.filter((s) => !granted.has(s)) };
 }

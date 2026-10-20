@@ -15,7 +15,7 @@ import type { Clients } from './publish/dispatch';
 export function createClients(fetchFn: typeof fetch = fetch): Clients {
   return { facebook: facebookClient(fetchFn), instagram: instagramClient(fetchFn), line: lineClient(fetchFn) };
 }
-export { META_SCOPES, metaLoginUrl, exchangeCodeForPages, type MetaApp, type MetaPage } from './platforms/meta-oauth';
+export { META_SCOPES, OPTIONAL_META_SCOPES, metaLoginUrl, exchangeCodeForPages, type MetaApp, type MetaGrant, type MetaPage } from './platforms/meta-oauth';
 export * from './workspace';
 export * from './posts';
 export * from './time';

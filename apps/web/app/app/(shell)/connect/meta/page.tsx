@@ -1,12 +1,15 @@
-import { loadKey, pendingMetaConnect } from '@kdan-social/core';
+import { loadKey, OPTIONAL_META_SCOPES, pendingMetaConnect } from '@kdan-social/core';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { saveMetaConnection } from '@/app/app/actions';
 
-export default async function ConnectMeta({ searchParams }: { searchParams: Promise<{ session?: string; error?: string }> }) {
+export default async function ConnectMeta({ searchParams }: { searchParams: Promise<{ session?: string; error?: string; missing?: string }> }) {
   const { user, workspace } = await requireWorkspace();
-  const { session, error } = await searchParams;
+  const { session, error, missing: missingParam } = await searchParams;
+  const missing = (missingParam ?? '').split(',').filter(Boolean);
+  const required = missing.filter((m) => !OPTIONAL_META_SCOPES.includes(m));
+  const optional = missing.filter((m) => OPTIONAL_META_SCOPES.includes(m));
   if (!session) redirect('/app');
   const pages = await pendingMetaConnect(getDb(), loadKey(), { sessionId: session, workspaceId: workspace.id, userId: user.id });
   if (!pages) redirect('/app?notice=meta_expired');
@@ -17,7 +20,15 @@ export default async function ConnectMeta({ searchParams }: { searchParams: Prom
         <h1>選擇要加入的粉專</h1>
         <div className="sub">以下是你在 Facebook 授權畫面勾選的粉專。加入後可以在「帳號與群組」把它們分進群組、設定時區；粉專有綁定 Instagram 商業帳號的話，可以一起加入。</div>
       </header>
-      {error === 'none' && <p className="small" style={{ color: 'var(--err)' }}>請至少勾選一個粉專。</p>}
+      {required.length > 0 && (
+        <div className="alert" role="alert">
+          <div className="body">你在 Facebook 授權畫面取消了 {required.join('、')}。少了這些權限，加入的帳號會發不出貼文；建議取消這次，重新連結並保留所有勾選。</div>
+        </div>
+      )}
+      {optional.length > 0 && (
+        <div className="card card-pad small" role="status">沒有授權 {optional.join('、')}：帳號可以正常發文，但成效頁不會有觸及與觀看數。之後想補上，重新連結一次並勾選即可。</div>
+      )}
+            {error === 'none' && <p className="small" style={{ color: 'var(--err)' }}>請至少勾選一個粉專。</p>}
       <form action={saveMetaConnection} className="card">
         <input type="hidden" name="session" value={session} />
         {pages.map((p) => (
