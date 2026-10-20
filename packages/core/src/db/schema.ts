@@ -38,6 +38,35 @@ export const workspaces = pgTable('workspaces', {
   createdAt: createdAt(),
 });
 
+export const memberRole = pgEnum('member_role', ['owner', 'admin', 'editor', 'reviewer']);
+
+export const workspaceMembers = pgTable(
+  'workspace_members',
+  {
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    // The auth provider's user id. No foreign key: Supabase keeps users in its own
+    // `auth` schema, and the core must not depend on that to stay portable.
+    userId: uuid('user_id').notNull(),
+    email: text('email').notNull(),
+    role: memberRole('role').notNull().default('editor'),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.userId] }), index('members_user').on(t.userId)],
+);
+
+/**
+ * Pages returned by one Facebook authorization, held until the user picks which to add.
+ * The payload carries page tokens, so it is encrypted and expires after a few minutes.
+ */
+export const metaConnectSessions = pgTable('meta_connect_sessions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull(),
+  payload: text('payload').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+});
+
 export const markets = pgTable(
   'markets',
   {

@@ -29,7 +29,7 @@ const TIMEOUT_MS = 30_000;
 /** Remove tokens from text that may reach logs or the UI. */
 export function mask(text: string): string {
   return text
-    .replace(/(access_token|client_secret|channel_secret)=[^&\s"]+/gi, '$1=***')
+    .replace(/(access_token|client_secret|channel_secret|fb_exchange_token|code)=[^&\s"]+/gi, '$1=***')
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer ***');
 }
 
