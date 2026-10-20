@@ -31,7 +31,7 @@ function stateOf(t: ScheduledTask) {
 /** Flag a task's icon when it failed, or still waits on an account whose authorization expired. */
 const isBad = (t: ScheduledTask) => t.status === 'failed' || ((t.status === 'scheduled' || t.status === 'running') && t.accountStatus !== 'active');
 
-type Card = { key: string; groupName: string | null; time: string; local: string | null; title: string; state: string; tasks: ScheduledTask[]; detail: string | null };
+type Card = { key: string; postId: string; groupName: string | null; time: string; local: string | null; title: string; state: string; tasks: ScheduledTask[]; detail: string | null };
 
 /** Group a day's tasks into one card per post and account group, as the prototype shows them. */
 function cardsFor(tasks: ScheduledTask[], viewTz: string): Card[] {
@@ -45,7 +45,7 @@ function cardsFor(tasks: ScheduledTask[], viewTz: string): Card[] {
     // Each account's own clock, where it differs from the viewer's.
     const local = [...new Set(list.filter((x) => x.timeZone !== viewTz).map((x) => `${formatInZone(x.runAt, x.timeZone)}（${zoneName(x.timeZone)}）`))].join(' · ') || null;
     const err = errorText(list.find((x) => x.lastError)?.lastError ?? null);
-    return { key: `${t.postId}:${t.groupId}`, groupName: t.groupName, time: viewer, local, title: t.title, state, tasks: list, detail: err };
+    return { key: `${t.postId}:${t.groupId}`, postId: t.postId, groupName: t.groupName, time: viewer, local, title: t.title, state, tasks: list, detail: err };
   });
 }
 
@@ -120,7 +120,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
                   {d.cards.map((c) => {
                     const s = ST[c.state] ?? ST.scheduled!;
                     return (
-                      <a key={c.key} href={c.state === 'pending' || c.state === 'changes' ? '/app/approvals' : `/app/calendar?view=list${week ? `&week=${week}` : ''}`}
+                      <a key={c.key} href={c.state === 'pending' || c.state === 'changes' ? `/app/approvals?post=${c.postId}` : `/app/calendar?view=list${week ? `&week=${week}` : ''}`}
                         style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, border: `1px ${s.style} ${s.border}`, background: '#fff', boxShadow: `inset 3px 0 0 ${s.bar}`, color: 'var(--ink)' }}>
                         <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
                           <span className="tiny num" style={{ fontWeight: 600 }}>{c.time}</span>

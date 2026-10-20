@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, ComposeError, completeMetaConnect, ConnectError, connectLine, deleteGroup, globalPublishingEnabled, GroupError, lineClient, loadKey, mask, queueDryRunTest, saveGroup, setAccountTimeZone, setPublishing } from '@kdan-social/core';
+import { AccessError, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, lineClient, loadKey, mask, queueDryRunTest, ReviewError, saveGroup, setAccountTimeZone, setPublishing } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -126,4 +126,28 @@ export async function setTimeZoneAction(formData: FormData) {
   }
   revalidatePath('/app', 'layout');
   redirect(`/app/channels?notice=${encodeURIComponent('時區已更新；已排程的貼文維持原本的時間')}`);
+}
+
+/** Decide on a post under review, or just comment on it, then return to that post. */
+export async function reviewAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  const postId = String(formData.get('postId'));
+  const intent = String(formData.get('intent'));
+  const comment = String(formData.get('comment') ?? '');
+  const back = (q: string) => redirect(`/app/approvals?post=${encodeURIComponent(postId)}&${q}`);
+  let notice: string;
+  try {
+    if (intent === 'approve' || intent === 'request_changes') {
+      await decidePost(getDb(), { workspaceId: workspace.id, postId, decision: intent, comment, actor: user.email, role });
+      notice = intent === 'approve' ? '已核准，貼文會在排定的時間發出' : '已退回，請送審人依留言修改';
+    } else {
+      await commentOnPost(getDb(), { workspaceId: workspace.id, postId, body: comment, actor: user.email });
+      notice = '已留言';
+    }
+  } catch (e) {
+    if (e instanceof ReviewError) back(`error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app', 'layout');
+  back(`notice=${encodeURIComponent(notice)}`);
 }

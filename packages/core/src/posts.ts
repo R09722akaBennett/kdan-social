@@ -99,7 +99,7 @@ export async function createPost(db: Db, input: ComposeInput) {
   const firstLine = (input.body.trim().split('\n')[0] ?? '').slice(0, 40) || (input.media.length ? '（只有圖片）' : '（無標題）');
 
   return db.transaction(async (tx) => {
-    const [post] = await tx.insert(posts).values({ workspaceId: input.workspaceId, title: firstLine }).returning();
+    const [post] = await tx.insert(posts).values({ workspaceId: input.workspaceId, title: firstLine, body: input.body.trim(), createdBy: input.actor }).returning();
     for (const { account } of rows) {
       const [v] = await tx.insert(postVariants).values({
         postId: post!.id,

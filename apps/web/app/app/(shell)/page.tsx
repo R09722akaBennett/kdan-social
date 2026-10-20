@@ -211,7 +211,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   <span className="tiny muted">{tasks.length} 個帳號{spread ? ' · 依各帳號時區，從這個時間開始' : ''}</span>
                 </div>
               </div>
-              <a href={tone === 'warn' ? '/app/approvals' : '/app/calendar'} style={{ color: 'inherit' }}>
+              <a href={label === '待審核' || label === '要求修改' ? `/app/approvals?post=${first.postId}` : '/app/calendar'} style={{ color: 'inherit' }}>
                 <Chip tone={tone}>{label}</Chip>
               </a>
             </div>

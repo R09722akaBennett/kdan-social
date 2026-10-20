@@ -18,7 +18,7 @@ describe('schema', () => {
 });
 
 describe('migration from markets to account groups', () => {
-  it('turns markets into groups, moves their clock onto accounts, and splits shared variants per account', async () => {
+  it('turns markets into groups, moves their clock onto accounts, splits shared variants per account, and recovers post authors', async () => {
     const pg = new PGlite();
     const db = drizzle(pg);
     const folder = fileURLToPath(new URL('../drizzle', import.meta.url));
@@ -40,6 +40,7 @@ describe('migration from markets to account groups', () => {
         ('00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000b1', 'facebook', 'p2', 'TW page 2', 'x'),
         ('00000000-0000-4000-8000-0000000000c3', '00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000b2', 'facebook', 'p3', 'JP page', 'x');
       insert into posts (id, workspace_id, title) values ('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000a1', 'p');
+      insert into audit_log (workspace_id, actor, action, target) values ('00000000-0000-4000-8000-0000000000a1', 'editor@example.com', 'post.created', '00000000-0000-4000-8000-0000000000d1');
       insert into post_variants (id, post_id, market_id, platform, body, review_status) values
         ('00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000b1', 'facebook', 'TW text', 'approved'),
         ('00000000-0000-4000-8000-0000000000e2', '00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000b2', 'facebook', 'JP text', 'pending'),
@@ -69,5 +70,7 @@ describe('migration from markets to account groups', () => {
     ]);
     expect(await rows(`select count(*)::int as n from post_variants`)).toEqual([{ n: 3 }]);
     expect(await rows(`select to_regclass('public.markets') as t`)).toEqual([{ t: null }]);
+    // 0005 recovers each post's author from the audit log; the main text was never kept.
+    expect(await rows(`select created_by, body from posts`)).toEqual([{ created_by: 'editor@example.com', body: null }]);
   });
 });

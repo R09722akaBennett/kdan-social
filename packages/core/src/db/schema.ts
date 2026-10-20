@@ -112,8 +112,25 @@ export const posts = pgTable('posts', {
   id: id(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
+  // The main text; a variant whose body differs was customised for its account.
+  // Null on posts created before the main text was kept.
+  body: text('body'),
+  // Email of whoever wrote it, shown to reviewers. Null on posts created before this was kept.
+  createdBy: text('created_by'),
   createdAt: createdAt(),
 });
+
+export const postComments = pgTable(
+  'post_comments',
+  {
+    id: id(),
+    postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+    author: text('author').notNull(),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('comments_post').on(t.postId, t.createdAt)],
+);
 
 /** `previewUrl` is a small copy for LINE, whose preview images must be under 1 MB. */
 export type MediaItem = { url: string; alt?: string; previewUrl?: string };
