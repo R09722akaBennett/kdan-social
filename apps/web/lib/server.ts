@@ -52,3 +52,8 @@ export function metaApp(req?: Request) {
   if (!appId || !appSecret) throw new Error('META_APP_ID and META_APP_SECRET must be set');
   return { appId, appSecret, redirectUri: `${appUrl(req)}/api/meta/callback` };
 }
+
+/** Codes that let someone create a workspace themselves; none means signup is invite-only. */
+export function signupCodes(): string[] {
+  return (process.env.SIGNUP_CODES ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+}

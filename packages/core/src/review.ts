@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { accountGroups, auditLog, connectedAccounts, postComments, postVariants, posts, publishTasks, type Db } from './db/index';
+import { accountGroups, accountPosts, auditLog, connectedAccounts, postComments, postVariants, posts, publishTasks, type Db } from './db/index';
 
 /** A review action refused; the message is shown to the user as is. */
 export class ReviewError extends Error {}
@@ -87,17 +87,20 @@ export async function reviewDetail(db: Db, a: { workspaceId: string; postId: str
         accountId: connectedAccounts.id, name: connectedAccounts.name, platform: connectedAccounts.platform,
         accountStatus: connectedAccounts.status, timeZone: connectedAccounts.timeZone, groupName: accountGroups.name,
         body: postVariants.body, media: postVariants.media, review: postVariants.reviewStatus,
-        runAt: publishTasks.runAt, taskStatus: publishTasks.status,
+        runAt: publishTasks.runAt, taskStatus: publishTasks.status, lastError: publishTasks.lastError, externalPostId: publishTasks.externalPostId,
+        // Known once the nightly import has read the post back from the account.
+        permalink: accountPosts.permalink,
       })
       .from(postVariants)
       .innerJoin(publishTasks, eq(publishTasks.variantId, postVariants.id))
       .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
       .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId))
+      .leftJoin(accountPosts, and(eq(accountPosts.accountId, publishTasks.accountId), eq(accountPosts.externalId, publishTasks.externalPostId)))
       .where(eq(postVariants.postId, post.id))
       .orderBy(asc(publishTasks.runAt), asc(connectedAccounts.name)),
     db.select().from(postComments).where(eq(postComments.postId, post.id)).orderBy(asc(postComments.createdAt)),
     db.select({ actor: auditLog.actor, action: auditLog.action, at: auditLog.at }).from(auditLog)
-      .where(and(eq(auditLog.workspaceId, a.workspaceId), eq(auditLog.target, post.id), inArray(auditLog.action, ['post.created', 'post.edited', 'post.approved', 'post.changes_requested'])))
+      .where(and(eq(auditLog.workspaceId, a.workspaceId), eq(auditLog.target, post.id), inArray(auditLog.action, ['post.created', 'post.edited', 'post.approved', 'post.changes_requested', 'post.cancelled'])))
       .orderBy(asc(auditLog.at)),
   ]);
   return {

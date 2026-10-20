@@ -25,6 +25,8 @@ export const taskStatus = pgEnum('task_status', [
   'failed',
   'needs_check',
   'missed',
+  // Withdrawn before it ran; the dispatcher only ever picks `scheduled`.
+  'cancelled',
 ]);
 
 const id = () => uuid('id').primaryKey().default(sql`gen_random_uuid()`);
@@ -39,6 +41,8 @@ export const workspaces = pgTable('workspaces', {
   timeZone: text('time_zone').notNull().default('Asia/Taipei'),
   // Posts by editors wait for an owner or admin before they go out.
   requiresReview: boolean('requires_review').notNull().default(true),
+  // Set when someone closes the setup checklist on the overview.
+  onboardingDismissedAt: timestamp('onboarding_dismissed_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
 

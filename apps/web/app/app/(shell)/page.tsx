@@ -5,6 +5,7 @@ import {
   globalPublishingEnabled,
   listAccounts,
   listGroups,
+  setupProgress,
   overviewCounts,
   publishingAllowed,
   upcomingTasks,
@@ -12,12 +13,13 @@ import {
 } from '@kdan-social/core';
 import type { CSSProperties } from 'react';
 import { FilterMenu } from '@/components/groups';
-import { Chip, Icon, localTime, Pf, PLATFORM, fmtN, zoneName } from '@/components/ui';
+import { Chip, Icon, localTime, Pf, PLATFORM, fmtN, zoneName, zoneOptions } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
-import { getDb } from '@/lib/server';
-import { signOut, togglePublishing } from '@/app/app/actions';
+import { createWorkspaceAction, dismissOnboardingAction, signOut } from '@/app/app/actions';
+import { getDb, signupCodes } from '@/lib/server';
 
 const NOTICE: Record<string, [string, string]> = {
+  workspace_created: ['ok', '工作區建好了，照下面的清單一步步設定。'],
   connected: ['ok', '已連結 {n} 個帳號。'],
   line_connected: ['ok', '已連結 LINE 官方帳號「{n}」。'],
   test_queued: ['ok', '已排入一則測試貼文，一分鐘內會被處理成 dry-run，可到行事曆查看結果。'],
@@ -45,18 +47,54 @@ function taskChip(t: ScheduledTask): ['plan' | 'warn' | 'err', string] {
   return ['plan', '已排程'];
 }
 
-export default async function Overview({ searchParams }: { searchParams: Promise<{ group?: string | string[]; notice?: string; n?: string }> }) {
+export default async function Overview({ searchParams }: { searchParams: Promise<{ group?: string | string[]; notice?: string; n?: string; error?: string }> }) {
   const { user, membership } = await currentMember();
   const sp = await searchParams;
   const { notice, n } = sp;
   const filter = [sp.group ?? []].flat();
 
   if (!membership) {
+    const canCreate = signupCodes().length > 0;
+    // After Base44's "Create a Workspace": one card, then what happens next.
     return (
-      <main className="main" style={{ maxWidth: 560, margin: '64px auto' }}>
-        <h1>尚未加入任何工作區</h1>
-        <p>你以 <strong>{user.email}</strong> 登入，但還沒有被加入工作區。請聯絡管理員把你加進去。</p>
-        <form action={signOut}><button className="btn" type="submit">登出</button></form>
+      <main className="main" style={{ maxWidth: 560, margin: '48px auto' }}>
+        <header>
+          <h1>建立工作區</h1>
+          <div className="sub">你以 {user.email} 登入。工作區是一個品牌的所有帳號、貼文與成員所在的地方。</div>
+        </header>
+        {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
+        {canCreate ? (
+          <form action={createWorkspaceAction} className="card card-pad stack" style={{ gap: 14 }}>
+            <div className="field">
+              <label htmlFor="ws-name">工作區名稱</label>
+              <input id="ws-name" name="name" className="input" required maxLength={60} placeholder="例如：品牌或公司名稱" autoFocus />
+            </div>
+            <div className="field">
+              <label htmlFor="ws-tz">時區</label>
+              <select id="ws-tz" name="timeZone" className="select" defaultValue="Asia/Taipei">
+                {zoneOptions().map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
+              </select>
+              <span className="tiny muted">頁面上的時間以這個時區顯示，新連結的帳號也先用它；之後每個帳號可以各自調整。</span>
+            </div>
+            <div className="field">
+              <label htmlFor="ws-code">邀請碼</label>
+              <input id="ws-code" name="code" className="input" required autoComplete="off" />
+            </div>
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button type="submit" className="btn btn-primary">建立工作區</button>
+            </div>
+          </form>
+        ) : (
+          <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁邀請 {user.email}，再重新登入。</div>
+        )}
+        <div className="card card-pad small stack" style={{ gap: 4, background: 'var(--ok-soft)', border: 0 }}>
+          <strong style={{ fontWeight: 600 }}>接下來</strong>
+          <span>· 你會是這個工作區的擁有者，可以邀請成員、管理所有設定</span>
+          <span>· 總覽頁會有一份設定清單，帶你連結帳號、送測試貼文</span>
+          <span>· 對外發文預設關閉，確認沒問題後再到設定開啟</span>
+          {!canCreate && <span>· 被邀請的話，用受邀的 email 登入就會自動加入</span>}
+        </div>
+        <form action={signOut}><button className="btn btn-sm" type="submit">登出</button></form>
       </main>
     );
   }
@@ -64,12 +102,13 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const db = getDb();
   const { workspace, role } = membership;
   const groupIds = filter.map((g) => (g === 'none' ? null : g));
-  const [groups, accounts, followers, counts, upcoming] = await Promise.all([
+  const [groups, accounts, followers, counts, upcoming, progress] = await Promise.all([
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     followerStats(db, workspace.id),
     overviewCounts(db, { workspaceId: workspace.id, groupIds, timeZone: workspace.timeZone }),
     upcomingTasks(db, { workspaceId: workspace.id, groupIds, limit: 30 }),
+    setupProgress(db, workspace.id),
   ]);
   const inFilter = (groupId: string | null) => filter.length === 0 || filter.includes(groupId ?? 'none');
   const shownAccounts = accounts.filter((a) => inFilter(a.groupId));
@@ -84,6 +123,17 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const delta = deltas.reduce((s, d) => s + d, 0);
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
   const note = notice ? NOTICE[notice] : undefined;
+  // After HoneyBook's step-by-step list and Hootsuite's dismissible Getting Started card.
+  const steps = [
+    { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false },
+    { title: '送一則測試貼文', detail: '在「帳號與群組」按「送一則測試 dry-run」，看它從排程走到記錄，不會真的發出。', href: '/app/channels', done: progress.testRun, optional: false },
+    { title: '把帳號分群組', detail: '例如依國家、子品牌或門市分，發文時可以一鍵選取一組帳號。', href: '/app/channels#groups', done: progress.groups, optional: true },
+    { title: '設定品牌語氣', detail: 'AI 改寫與試寫都會照這裡的語氣、禁用詞與詞彙表。', href: '/app/voice', done: progress.voice, optional: true },
+    { title: '邀請成員', detail: '讓編輯寫貼文、管理員核准。', href: '/app/members', done: progress.members, optional: true },
+    { title: '開啟對外發文', detail: '確認測試沒問題後再開，之後到時間的貼文才會真的發出。', href: '/app/settings#publishing', done: progress.publishing, optional: false },
+  ];
+  const done = steps.filter((x) => x.done).length;
+  const allDone = done === steps.length;
   const today = new Intl.DateTimeFormat('zh-TW', { timeZone: tz, month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 
   // One row per post, with its accounts and the most urgent state among them.
@@ -106,6 +156,34 @@ export default async function Overview({ searchParams }: { searchParams: Promise
 
       {note && <div className={`chip chip-${note[0]}`} role="status" style={{ height: 'auto', padding: '10px 14px', fontSize: 14 }}>{note[1].replace('{n}', n ?? '0')}</div>}
 
+      {!progress.dismissed && !allDone && (
+        <section className="card" aria-labelledby="h-setup">
+          <div className="card-head">
+            <div style={{ flex: 1 }}>
+              <h2 id="h-setup">開始使用 kdan-social</h2>
+              <div className="row small muted" style={{ gap: 10, marginTop: 6 }}>
+                <span>{done} / {steps.length} 完成</span>
+                <span role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={steps.length} aria-label="設定進度" style={{ flex: '0 1 240px', height: 6, borderRadius: 3, background: 'var(--line-soft)', overflow: 'hidden', display: 'block' }}>
+                  <span style={{ display: 'block', height: 6, width: `${(done / steps.length) * 100}%`, background: 'var(--ok)' }} />
+                </span>
+              </div>
+            </div>
+            <form action={dismissOnboardingAction}><button type="submit" className="btn icon-btn" aria-label="關閉設定清單" title="關閉設定清單" style={{ width: 32, height: 32, minHeight: 32, border: 0 }}><Icon name="close" size={16} /></button></form>
+          </div>
+          {steps.map((st) => (
+            <a key={st.title} href={st.href} className="list-row" style={{ color: 'inherit', alignItems: 'center' }}>
+              <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: 11, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: st.done ? 0 : '2px solid var(--line)', background: st.done ? 'var(--ok)' : 'transparent', color: '#fff', fontSize: 13, fontWeight: 700 }}>{st.done ? '✓' : ''}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontWeight: 600, textDecoration: st.done ? 'line-through' : 'none', color: st.done ? 'var(--ink-3)' : 'var(--ink)' }}>{st.title}</span>
+                {st.optional && <span className="tiny muted" style={{ marginLeft: 6 }}>選填</span>}
+                <span className="small muted" style={{ display: 'block' }}>{st.detail}</span>
+              </span>
+              {!st.done && <Icon name="chevronRight" size={16} />}
+            </a>
+          ))}
+        </section>
+      )}
+
       {expired[0] && (
         <section className="alert" aria-label="需要處理">
           <span style={{ color: 'var(--err)', display: 'flex' }}><Icon name="alert" size={20} stroke={2} /></span>
@@ -117,19 +195,12 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         </section>
       )}
 
-      <section className="card card-pad row" style={{ gap: '10px 16px', borderColor: live ? 'var(--err-line)' : 'var(--line)' }} aria-label="對外發文">
-        <div style={{ flex: '1 1 320px' }}>
-          <div style={{ fontWeight: 600 }}>對外發文：{live ? '開啟，到時間的貼文會真的發出' : '關閉，到時間的貼文只記錄為 dry-run'}</div>
-          <div className="small muted">工作區開關：{workspace.publishingEnabled ? '開' : '關'} · 系統總開關：{globalPublishingEnabled() ? '開' : '關（由系統管理員控制）'}。兩個都開才會真的發文。</div>
+      {!live && (
+        <div className="card card-pad row small" role="status" style={{ gap: 10 }}>
+          <span style={{ flex: 1 }}><strong style={{ fontWeight: 600 }}>對外發文關閉中</strong>：到時間的貼文只會記錄為 dry-run，不會真的發出。</span>
+          <a className="btn btn-sm" href="/app/settings#publishing">到設定開啟</a>
         </div>
-        {role === 'owner' && (
-          <form action={togglePublishing} className="row">
-            <input type="hidden" name="enable" value={workspace.publishingEnabled ? '0' : '1'} />
-            {!workspace.publishingEnabled && <label className="row small" style={{ cursor: 'pointer' }}><input type="checkbox" name="confirm" style={{ accentColor: 'var(--err)' }} />我了解開啟後貼文會真的發到粉專</label>}
-            <button className={`btn ${workspace.publishingEnabled ? '' : 'btn-danger'}`} type="submit">{workspace.publishingEnabled ? '關閉工作區發文' : '開啟工作區發文'}</button>
-          </form>
-        )}
-      </section>
+      )}
 
       <section className="grid" style={{ '--min': '200px' } as CSSProperties} aria-label="數字">
         <a href="/app/analytics" className="card stat">
@@ -205,7 +276,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                 <span className="tiny muted">{dayInZone(first.runAt, tz)}</span>
               </div>
               <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                <div>{first.title}</div>
+                <a href={`/app/posts/${first.postId}`} style={{ color: 'inherit' }}>{first.title}</a>
                 <div className="row" style={{ gap: 4, marginTop: 4 }}>
                   {tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={t.accountStatus !== 'active'} />)}
                   <span className="tiny muted">{tasks.length} 個帳號{spread ? ' · 依各帳號時區，從這個時間開始' : ''}</span>

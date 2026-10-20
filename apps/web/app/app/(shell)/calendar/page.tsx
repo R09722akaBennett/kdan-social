@@ -16,6 +16,7 @@ const ST: Record<string, { bar: string; label: string; fg: string; border: strin
   needs_check: { bar: 'var(--warn-bar)', label: '需人工確認', fg: 'var(--warn)', border: '#EBD9A8', style: 'solid' },
   missed: { bar: 'var(--warn-bar)', label: '未核准略過', fg: 'var(--warn)', border: '#EBD9A8', style: 'solid' },
   dry_run: { bar: 'transparent', label: 'dry-run', fg: 'var(--ink-3)', border: '#B8BEC7', style: 'dashed' },
+  cancelled: { bar: 'transparent', label: '已取消', fg: 'var(--ink-3)', border: '#D5D9DF', style: 'dashed' },
 };
 
 /** The calendar state of one task: its own status, refined by review and account health while it waits. */
@@ -37,7 +38,7 @@ type Card = { key: string; postId: string; groupName: string | null; time: strin
 function cardsFor(tasks: ScheduledTask[], viewTz: string): Card[] {
   const map = new Map<string, ScheduledTask[]>();
   for (const t of tasks) map.set(`${t.postId}:${t.groupId}`, [...(map.get(`${t.postId}:${t.groupId}`) ?? []), t]);
-  const order = ['risk', 'failed', 'changes', 'needs_check', 'missed', 'pending', 'running', 'scheduled', 'published', 'dry_run'];
+  const order = ['risk', 'failed', 'changes', 'needs_check', 'missed', 'pending', 'running', 'scheduled', 'published', 'dry_run', 'cancelled'];
   return [...map.values()].map((list) => {
     const t = list[0]!;
     const state = list.map(stateOf).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]!;
@@ -120,7 +121,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
                   {d.cards.map((c) => {
                     const s = ST[c.state] ?? ST.scheduled!;
                     return (
-                      <a key={c.key} href={c.state === 'pending' || c.state === 'changes' ? `/app/approvals?post=${c.postId}` : `/app/calendar?view=list${week ? `&week=${week}` : ''}`}
+                      <a key={c.key} href={`/app/posts/${c.postId}`}
                         style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, border: `1px ${s.style} ${s.border}`, background: '#fff', boxShadow: `inset 3px 0 0 ${s.bar}`, color: 'var(--ink)' }}>
                         <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
                           <span className="tiny num" style={{ fontWeight: 600 }}>{c.time}</span>
@@ -151,7 +152,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
               <div key={c.key} className="list-row">
                 <span className="num" style={{ width: 120, color: 'var(--ink-2)' }}>{d.wd} {d.key} {c.time}</span>
                 <GroupTag name={c.groupName} />
-                <span style={{ flex: '1 1 260px', minWidth: 0 }}>{c.title}</span>
+                <a href={`/app/posts/${c.postId}`} style={{ flex: '1 1 260px', minWidth: 0, color: 'inherit' }}>{c.title}</a>
                 <span className="row" style={{ gap: 4 }}>{c.tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={isBad(t)} />)}</span>
                 <span className="small" style={{ width: 200, textAlign: 'right', color: s.fg }}>{s.label}{page && post ? <> · <a href={`https://www.facebook.com/${page}/posts/${post}`} target="_blank" rel="noreferrer">看貼文</a></> : null}</span>
                 {c.detail && <span className="tiny" style={{ flexBasis: '100%', color: 'var(--ink-2)' }}>{c.detail}</span>}

@@ -1,11 +1,11 @@
 'use server';
 
-import { AccessError, AiError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
-import { requireWorkspace } from '@/lib/auth';
-import { deps, getDb } from '@/lib/server';
+import { requireUser, requireWorkspace } from '@/lib/auth';
+import { deps, getDb, signupCodes } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
 // Server actions are public endpoints: every one re-checks the session and workspace
@@ -58,15 +58,15 @@ export async function signOut() {
 export async function togglePublishing(formData: FormData) {
   const { user, workspace, role } = await requireWorkspace();
   const enable = formData.get('enable') === '1';
-  if (enable && formData.get('confirm') !== 'on') redirect('/app?notice=confirm_needed');
+  if (enable && formData.get('confirm') !== 'on') redirect(`/app/settings?error=${encodeURIComponent('開啟前請先勾選確認。')}`);
   try {
     await setPublishing(getDb(), { workspaceId: workspace.id, enabled: enable, actor: user.email, role });
   } catch (e) {
-    if (e instanceof ComposeError) redirect('/app?notice=owner_only');
+    if (e instanceof ComposeError) redirect(`/app/settings?error=${encodeURIComponent('只有工作區擁有者可以切換對外發文。')}`);
     throw e;
   }
   revalidatePath('/app');
-  redirect(`/app?notice=${enable ? 'publishing_on' : 'publishing_off'}`);
+  redirect(`/app/settings?notice=${encodeURIComponent(enable ? '已開啟對外發文：之後到時間的貼文會真的發出。' : '已關閉對外發文：之後到時間的貼文只會記錄為 dry-run。')}`);
 }
 
 export async function connectLineAccount(formData: FormData) {
@@ -242,4 +242,55 @@ export async function insightsAction(input: { days: number; groups: string[] }):
     if (e instanceof AiError) return { error: e.message };
     throw e;
   }
+}
+
+export async function createWorkspaceAction(formData: FormData) {
+  const user = await requireUser();
+  try {
+    await createWorkspaceForUser(getDb(), {
+      userId: user.id, email: user.email, codes: signupCodes(),
+      name: String(formData.get('name') ?? ''), timeZone: String(formData.get('timeZone') ?? ''), code: String(formData.get('code') ?? ''),
+    });
+  } catch (e) {
+    if (e instanceof WorkspaceError) redirect(`/app?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app', 'layout');
+  redirect('/app?notice=workspace_created');
+}
+
+export async function updateSettingsAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  try {
+    await updateWorkspaceSettings(getDb(), {
+      workspaceId: workspace.id, actor: user.email, role,
+      name: String(formData.get('name') ?? workspace.name), timeZone: String(formData.get('timeZone') ?? workspace.timeZone),
+      requiresReview: formData.get('requiresReview') === 'on',
+    });
+  } catch (e) {
+    if (e instanceof WorkspaceError) redirect(`/app/settings?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app', 'layout');
+  redirect(`/app/settings?notice=${encodeURIComponent('已儲存設定')}`);
+}
+
+export async function dismissOnboardingAction() {
+  const { user, workspace } = await requireWorkspace();
+  await dismissOnboarding(getDb(), { workspaceId: workspace.id, actor: user.email });
+  revalidatePath('/app');
+  redirect('/app');
+}
+
+export async function cancelPostAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  const postId = String(formData.get('postId'));
+  try {
+    await cancelPost(getDb(), { workspaceId: workspace.id, postId, actor: user.email, role });
+  } catch (e) {
+    if (e instanceof ComposeError) redirect(`/app/posts/${postId}?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app', 'layout');
+  redirect(`/app/posts/${postId}?notice=${encodeURIComponent('已取消排程，還沒發出的帳號不會再發')}`);
 }

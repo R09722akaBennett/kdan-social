@@ -27,3 +27,4 @@ export * from './voice';
 export * from './voice-rules';
 export * from './ai/index';
 export * from './analytics';
+export * from './onboarding';

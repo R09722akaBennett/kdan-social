@@ -229,3 +229,27 @@ export async function setPublishing(db: Db, a: { workspaceId: string; enabled: b
   await db.update(workspaces).set({ publishingEnabled: a.enabled }).where(eq(workspaces.id, a.workspaceId));
   await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: a.enabled ? 'publishing.enabled' : 'publishing.disabled', target: a.workspaceId });
 }
+
+/**
+ * Withdraw whatever of a post has not gone out yet. Accounts already sent to keep their
+ * post; their history stays.
+ *
+ * Raises:
+ *   ComposeError: the caller is neither the author nor an owner or admin, the post is
+ *     not in the workspace, or nothing of it is still scheduled.
+ */
+export async function cancelPost(db: Db, a: { workspaceId: string; postId: string; actor: string; role: Role; now?: Date }) {
+  const now = a.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const [post] = await tx.select().from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
+    if (!post) throw new ComposeError('找不到這篇貼文，請重新整理後再試。');
+    if (a.role !== 'owner' && a.role !== 'admin' && post.createdBy !== a.actor) throw new ComposeError('只有作者、擁有者或管理員可以取消這篇貼文。');
+    // Locked so the dispatcher, which skips locked rows, cannot start one mid-cancel.
+    const open = await tx.select({ id: publishTasks.id }).from(publishTasks).innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
+      .where(and(eq(postVariants.postId, post.id), eq(publishTasks.status, 'scheduled'))).for('update', { of: publishTasks });
+    if (!open.length) throw new ComposeError('這篇貼文沒有還在排程中的帳號，沒有東西可以取消。');
+    await tx.update(publishTasks).set({ status: 'cancelled', finishedAt: now }).where(inArray(publishTasks.id, open.map((t) => t.id)));
+    await tx.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'post.cancelled', target: post.id, detail: { title: post.title, tasks: open.length } });
+    return { cancelled: open.length };
+  });
+}
