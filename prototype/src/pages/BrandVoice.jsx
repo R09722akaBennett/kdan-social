@@ -1,23 +1,23 @@
 import { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { MARKETS } from '../data.js';
-import { Seg, AiHeader } from '../components/ui.jsx';
+import { Pf, Seg, AiHeader } from '../components/ui.jsx';
 
+// Group-level rules are optional; these fill KDAN's three sample groups.
 const RULES = {
-  tw: '用台灣用語：影片、軟體、檔案、登入（不用視頻、軟件、文件、登錄）\n中英文之間加空格\n價格寫「NT$」，折扣寫「5 折」\n一篇最多 1 個驚嘆號',
-  us: 'Sentence case for headlines\nLead with the benefit, then the detail\nAvoid exclamation marks; never more than one per post\nPrices in US$, discounts as "50% off"',
-  jp: 'です・ます調で統一\n感嘆符は 1 投稿 1 つまで\n価格は税込表記、割引は「50% OFF」\n「雙十一」は日本では認知度が低いので「年末セール」と併記',
+  g1: '用台灣用語：影片、軟體、檔案、登入（不用視頻、軟件、文件、登錄）\n中英文之間加空格\n價格寫「NT$」，折扣寫「5 折」\n一篇最多 1 個驚嘆號',
+  g2: 'Sentence case for headlines\nLead with the benefit, then the detail\nAvoid exclamation marks; never more than one per post\nPrices in US$, discounts as "50% off"',
+  g3: 'です・ます調で統一\n感嘆符は 1 投稿 1 つまで\n価格は税込表記、割引は「50% OFF」\n「雙十一」は日本では認知度が低いので「年末セール」と併記',
 };
 const EXAMPLES = {
-  tw: ['新功能｜AI 摘要支援 30 頁以上長文件\n合約、報告丟進去，30 秒抓出重點。', '用戶故事｜一位會計師如何用 PDF 表單，每週省下 3 小時。'],
-  us: ['New: AI summaries now handle documents over 30 pages.\nDrop in a contract or report and get the key points in seconds.', 'How one accountant saves 3 hours a week with PDF forms.'],
-  jp: ['新機能：AI 要約が 30 ページ以上の文書に対応しました。\n契約書やレポートの要点を、すばやく確認できます。', '会計士の方が PDF フォームで毎週 3 時間を短縮した事例をご紹介します。'],
+  g1: ['新功能｜AI 摘要支援 30 頁以上長文件\n合約、報告丟進去，30 秒抓出重點。', '用戶故事｜一位會計師如何用 PDF 表單，每週省下 3 小時。'],
+  g2: ['New: AI summaries now handle documents over 30 pages.\nDrop in a contract or report and get the key points in seconds.', 'How one accountant saves 3 hours a week with PDF forms.'],
+  g3: ['新機能：AI 要約が 30 ページ以上の文書に対応しました。\n契約書やレポートの要点を、すばやく確認できます。', '会計士の方が PDF フォームで毎週 3 時間を短縮した事例をご紹介します。'],
 };
 const LEARNED = {
   brand: ['開頭用「｜」分隔主題和重點的貼文，互動率比平均高 24%。', '提到具體省下的時間（「每週 3 小時」）比只說「更有效率」互動高。', '連結放最後一行；放中間的貼文點擊率較低。'],
-  tw: ['台灣貼文平均 68 字，超過 120 字的互動明顯下降。', '晚上 20:00 發的貼文互動最好。'],
-  us: ['Posts that open with a number get 31% more saves on Instagram.', 'Shorter Facebook posts (under 200 characters) get more clicks.'],
-  jp: ['丁寧な締めの一文（「ぜひご活用ください」）がある投稿の方が反応が良い。', 'LINE は 4 行以内の配信の方がクリック率が高い。'],
+  g1: ['這個群組的貼文平均 68 字，超過 120 字的互動明顯下降。', '晚上 20:00 發的貼文互動最好。'],
+  g2: ['Posts that open with a number get 31% more saves on Instagram.', 'Shorter Facebook posts (under 200 characters) get more clicks.'],
+  g3: ['丁寧な締めの一文（「ぜひご活用ください」）がある投稿の方が反応が良い。', 'LINE は 4 行以内の配信の方がクリック率が高い。'],
 };
 const GLOSSARY = [
   ['PDF Reader', 'PDF Reader', 'PDF Reader', '產品名，不翻譯'],
@@ -31,17 +31,17 @@ function samplesFor(topic, emoji, formal) {
   const bang = emoji === 'many' ? ' 🎉' : '';
   const t = topic || '雙十一全方案 5 折預告';
   return {
-    tw: formal > 70
+    g1: formal > 70
       ? `${t}｜PDF Reader 自 11/11 00:00 起 72 小時內，全方案享 5 折優惠。${bang}`
       : `${t}｜PDF Reader 全方案 5 折\n11/11 00:00 開跑，限時 72 小時，結帳自動套用。${bang}`,
-    us: `50% off every PDF Reader plan.\nThe 11.11 sale starts Nov 11 at 12:00 AM ET and runs for 72 hours.${bang}`,
-    jp: `【年末セール】PDF Reader 全プラン 50% OFF\n11月11日 0:00 から72時間限定です。${bang}`,
+    g2: `50% off every PDF Reader plan.\nThe 11.11 sale starts Nov 11 at 12:00 AM ET and runs for 72 hours.${bang}`,
+    g3: `【年末セール】PDF Reader 全プラン 50% OFF\n11月11日 0:00 から72時間限定です。${bang}`,
   };
 }
 
 export default function BrandVoice() {
-  const { toast } = useStore();
-  const [tab, setTab] = useState('brand');
+  const { toast, groups, accounts } = useStore();
+  const [picked, setTab] = useState('brand');
   const [emoji, setEmoji] = useState('few');
   const [formal, setFormal] = useState(40);
   const [emotion, setEmotion] = useState(30);
@@ -51,7 +51,11 @@ export default function BrandVoice() {
   const [samples, setSamples] = useState(() => samplesFor('雙十一全方案 5 折預告', 'few', 40));
   const [gen, setGen] = useState(false);
 
-  const shownSamples = Object.entries(samples).filter(([k]) => tab === 'brand' || k === tab);
+  // A deleted group falls back to the brand tab.
+  const group = groups.find((g) => g.id === picked);
+  const tab = group ? picked : 'brand';
+  const shownSamples = Object.entries(samples).filter(([k]) => groups.some((g) => g.id === k) && (tab === 'brand' || k === tab));
+  const nameOf = (id) => groups.find((g) => g.id === id)?.name;
   const regenerate = () => {
     setGen(true);
     setTimeout(() => { setSamples(samplesFor(topic, emoji, 100 - formal)); setGen(false); }, 700);
@@ -62,13 +66,13 @@ export default function BrandVoice() {
       <header className="page-head">
         <div>
           <h1>品牌語氣</h1>
-          <div className="sub">AI 寫文案、改寫、在地化時都照這裡。品牌設定套用到所有市場，各市場再疊加自己的規則。</div>
+          <div className="sub">AI 寫文案、改寫、在地化時都照這裡。品牌設定套用到所有帳號；群組可以再疊加自己的規則（選填）。</div>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => toast('已儲存，之後 AI 產生的內容會套用新設定')}>儲存</button>
       </header>
 
       <div className="tabs" role="tablist" aria-label="設定層級" style={{ padding: 0 }}>
-        {[['brand', '品牌（所有市場）'], ['tw', '台灣'], ['us', '美國'], ['jp', '日本']].map(([k, l]) => (
+        {[['brand', '品牌（所有帳號）'], ...groups.map((g) => [g.id, g.name])].map(([k, l]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -112,7 +116,7 @@ export default function BrandVoice() {
                 <div className="card-head"><h2>詞彙表</h2><span className="tiny muted">在地化時固定照這張表</span></div>
                 <div className="table-wrap">
                   <table style={{ minWidth: 620 }}>
-                    <thead><tr><th>台灣</th><th>美國</th><th>日本</th><th>規則</th></tr></thead>
+                    <thead><tr><th>中文</th><th>English</th><th>日本語</th><th>規則</th></tr></thead>
                     <tbody>{GLOSSARY.map(([a, b, c, d]) => <tr key={a}><td>{a}</td><td>{b}</td><td lang="ja-JP">{c}</td><td style={{ color: 'var(--ink-2)' }}>{d}</td></tr>)}</tbody>
                   </table>
                 </div>
@@ -120,27 +124,27 @@ export default function BrandVoice() {
             </>
           ) : (
             <section className="card card-pad stack" style={{ gap: 14 }}>
-              <div className="row small" style={{ gap: '8px 24px', color: 'var(--ink-2)' }}>
-                <span>語言：<strong style={{ color: 'var(--ink)' }}>{MARKETS[tab].langName}</strong></span>
-                <span>時區：<strong style={{ color: 'var(--ink)' }}>{MARKETS[tab].tz}</strong></span>
-                <span>審核人：<strong style={{ color: 'var(--ink)' }}>{MARKETS[tab].reviewer}</strong></span>
+              <div className="row small" style={{ gap: 8, color: 'var(--ink-2)' }}>
+                <span>套用到</span>
+                {accounts.filter((a) => a.group === tab).map((a) => <span key={a.id} className="row tiny" style={{ gap: 4 }}><Pf pf={a.pf} size="sm" />{a.name}</span>)}
               </div>
               <div className="field">
-                <label htmlFor="rules">這個市場的額外規則</label>
-                <textarea id="rules" key={tab} lang={MARKETS[tab].lang} className="textarea" rows={5} defaultValue={RULES[tab]} />
+                <label htmlFor="rules">「{group?.name}」的額外規則（選填）</label>
+                <textarea id="rules" key={tab} className="textarea" rows={5} defaultValue={RULES[tab] ?? ''} placeholder="例如這組帳號用的語言、稱呼、價格寫法" />
                 <span className="tiny muted">和品牌設定衝突時，以這裡為準。</span>
               </div>
               <div className="field">
                 <span className="label">範例貼文</span>
-                {EXAMPLES[tab].map((x) => <div key={x} lang={MARKETS[tab].lang} className="small" style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--sunken)', whiteSpace: 'pre-line' }}>{x}</div>)}
+                {(EXAMPLES[tab] ?? []).length === 0 && <div className="small muted">還沒有範例；可以貼幾篇這組帳號寫得好的貼文。</div>}
+                {(EXAMPLES[tab] ?? []).map((x) => <div key={x} className="small" style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--sunken)', whiteSpace: 'pre-line' }}>{x}</div>)}
                 <span className="tiny muted">AI 會模仿這些範例的長度與節奏。</span>
               </div>
             </section>
           )}
 
           <section className="card card-ai card-pad stack" style={{ gap: 10 }}>
-            <AiHeader title="從過去的貼文學" note={tab === 'brand' ? '分析三個市場最近 150 篇貼文' : '分析這個市場最近 50 篇貼文'} />
-            <ul className="small stack" style={{ gap: 4 }}>{LEARNED[tab].map((l) => <li key={l}>{l}</li>)}</ul>
+            <AiHeader title="從過去的貼文學" note={tab === 'brand' ? '分析所有帳號最近 150 篇貼文' : '分析這個群組最近 50 篇貼文'} />
+            <ul className="small stack" style={{ gap: 4 }}>{(LEARNED[tab] ?? ['資料還不夠，這個群組累積 20 篇貼文後會開始分析。']).map((l) => <li key={l}>{l}</li>)}</ul>
             <div className="row">
               <button type="button" className="btn btn-sm btn-primary" onClick={() => toast('已加進規則')}>加進規則</button>
               <button type="button" className="btn btn-sm" onClick={() => toast('重新分析中，完成後會通知你')}>重新分析</button>
@@ -157,8 +161,8 @@ export default function BrandVoice() {
           <button type="button" className="btn btn-soft" disabled={gen} onClick={regenerate}>{gen ? '產生中…' : '用目前設定產生'}</button>
           {shownSamples.map(([k, text]) => (
             <div key={k} className="stack" style={{ gap: 4 }}>
-              <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{MARKETS[k].code}</span>
-              <div lang={MARKETS[k].lang} className="small" style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--sunken)', whiteSpace: 'pre-line', opacity: gen ? 0.5 : 1 }}>{text}</div>
+              <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{nameOf(k)}</span>
+              <div className="small" style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--sunken)', whiteSpace: 'pre-line', opacity: gen ? 0.5 : 1 }}>{text}</div>
             </div>
           ))}
           <span className="tiny muted">改完設定可以馬上試，滿意再儲存。</span>

@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Link } from '../router.jsx';
 import { useStore } from '../store.jsx';
-import { MARKETS } from '../data.js';
-import { Icon, Pf, Mk, Seg, MARKET_FILTER } from '../components/ui.jsx';
+import { Icon, Pf, Seg, FilterMenu, GroupTag } from '../components/ui.jsx';
 
 const ST = {
   done: { bar: 'var(--ok)', label: '已發布', fg: 'var(--ok)', border: 'var(--line)', style: 'solid' },
@@ -17,48 +16,48 @@ const WD = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'
 const START = new Date(2026, 9, 19);
 const TODAY = '10/20';
 
-// Posts keyed by Taipei date. `local` is the market's own clock when it differs.
+// Posts keyed by Taipei date. `g` is the group of the post's accounts; `local` is their own clock when it differs.
 function buildPosts({ igTwExpired, decisions, aiDrafts }) {
-  const dec = (item, m) => ({ ok: 'plan', wait: 'wait', chg: 'chg' })[decisions[item][m]];
+  const dec = (item) => ({ ok: 'plan', wait: 'wait', chg: 'chg' })[decisions[item]];
   const posts = [
-    { date: '10/19', time: '19:00', m: 'tw', st: 'fail', text: '萬聖節限定貼圖上線', pfs: [['fb'], ['ig'], ['line', true]], detail: 'LINE 失敗：本月額度不足' },
-    { date: '10/19', time: '20:00', m: 'jp', st: 'done', text: 'ハロウィン限定スタンプ配信開始', pfs: [['fb'], ['ig'], ['line']], local: '當地 21:00 JST' },
-    { date: '10/20', time: '20:00', m: 'tw', st: igTwExpired ? 'risk' : 'plan', text: '雙十一優惠預告：全方案 5 折', pfs: [['fb'], ['ig', igTwExpired], ['line']], detail: igTwExpired ? 'IG 授權失效' : undefined },
-    { date: '10/20', time: '19:00', m: 'jp', st: dec('p1', 'jp'), text: '11.11 セール予告', pfs: [['fb'], ['ig'], ['line']], local: '當地 20:00 JST', item: true },
-    { date: '10/21', time: '08:00', m: 'us', st: dec('p1', 'us'), text: '11.11 Global Sale: 50% off', pfs: [['fb'], ['ig']], local: '當地 10/20 20:00 EDT', item: true },
-    { date: '10/22', time: '12:00', m: 'tw', st: igTwExpired ? 'risk' : 'plan', text: '小技巧：一鍵把照片轉成可搜尋的 PDF', pfs: [['fb'], ['ig', igTwExpired]] },
-    { date: '10/22', time: '20:00', m: 'jp', st: dec('p2', 'jp'), text: '新機能：AI 要約が長文に対応', pfs: [['fb'], ['ig']], local: '當地 21:00 JST', item: true },
-    { date: '10/23', time: '21:00', m: 'us', st: 'plan', text: 'How to sign a PDF in 3 steps', pfs: [['fb'], ['ig']], local: '當地 09:00 EDT' },
-    { date: '10/24', time: '20:00', m: 'tw', st: 'draft', text: '用戶故事｜會計師如何用 PDF 表單省下每週 3 小時', pfs: [['fb']] },
-    { date: '10/27', time: '20:00', m: 'tw', st: 'plan', text: 'Document 365 團隊方案 Q&A 直播預告', pfs: [['fb'], ['line']] },
-    { date: '10/29', time: '20:00', m: 'jp', st: 'plan', text: 'PDF Reader 新しいテンプレート機能', pfs: [['fb'], ['ig']], local: '當地 21:00 JST' },
-    { date: '10/31', time: '08:00', m: 'us', st: 'plan', text: 'Halloween: spooky-fast PDF tips', pfs: [['ig']], local: '當地 10/30 20:00 EDT' },
+    { date: '10/19', time: '19:00', m: 'g1', st: 'fail', text: '萬聖節限定貼圖上線', pfs: [['fb'], ['ig'], ['line', true]], detail: 'LINE 失敗：本月額度不足' },
+    { date: '10/19', time: '20:00', m: 'g3', st: 'done', text: 'ハロウィン限定スタンプ配信開始', pfs: [['fb'], ['ig'], ['line']], local: '21:00（東京）' },
+    { date: '10/20', time: '20:00', m: 'g1', st: igTwExpired ? 'risk' : 'plan', text: '雙十一優惠預告：全方案 5 折', pfs: [['fb'], ['ig', igTwExpired], ['line']], detail: igTwExpired ? 'IG 授權失效' : undefined },
+    { date: '10/20', time: '19:00', m: 'g3', st: dec('p1'), text: '11.11 セール予告', pfs: [['fb'], ['ig'], ['line']], local: '20:00（東京）', item: true },
+    { date: '10/21', time: '08:00', m: 'g2', st: dec('p1'), text: '11.11 Global Sale: 50% off', pfs: [['fb'], ['ig']], local: '10/20 20:00（New York）', item: true },
+    { date: '10/22', time: '12:00', m: 'g1', st: igTwExpired ? 'risk' : 'plan', text: '小技巧：一鍵把照片轉成可搜尋的 PDF', pfs: [['fb'], ['ig', igTwExpired]] },
+    { date: '10/22', time: '20:00', m: 'g3', st: dec('p2'), text: '新機能：AI 要約が長文に対応', pfs: [['fb'], ['ig']], local: '21:00（東京）', item: true },
+    { date: '10/23', time: '21:00', m: 'g2', st: 'plan', text: 'How to sign a PDF in 3 steps', pfs: [['fb'], ['ig']], local: '09:00（New York）' },
+    { date: '10/24', time: '20:00', m: 'g1', st: 'draft', text: '用戶故事｜會計師如何用 PDF 表單省下每週 3 小時', pfs: [['fb']] },
+    { date: '10/27', time: '20:00', m: 'g1', st: 'plan', text: 'Document 365 團隊方案 Q&A 直播預告', pfs: [['fb'], ['line']] },
+    { date: '10/29', time: '20:00', m: 'g3', st: 'plan', text: 'PDF Reader 新しいテンプレート機能', pfs: [['fb'], ['ig']], local: '21:00（東京）' },
+    { date: '10/31', time: '08:00', m: 'g2', st: 'plan', text: 'Halloween: spooky-fast PDF tips', pfs: [['ig']], local: '10/30 20:00（New York）' },
   ];
   if (aiDrafts) {
     posts.push(
-      { date: '11/3', time: '20:00', m: 'tw', st: 'draft', ai: true, text: '雙十一倒數：今年 5 折適用哪些方案', pfs: [['fb'], ['ig']] },
-      { date: '11/3', time: '20:00', m: 'jp', st: 'draft', ai: true, text: '年末セール予告：11/11 からスタート', pfs: [['ig']], local: '當地 21:00 JST' },
-      { date: '11/4', time: '11:00', m: 'jp', st: 'draft', ai: true, text: '年末セール：対象プランまとめ', pfs: [['line']], local: '當地 12:00 JST' },
-      { date: '11/5', time: '20:00', m: 'tw', st: 'draft', ai: true, text: '用戶故事：會計師的 PDF 表單流程', pfs: [['fb'], ['ig'], ['line']] },
-      { date: '11/5', time: '20:00', m: 'jp', st: 'draft', ai: true, text: '電子署名を 3 ステップで（Reels）', pfs: [['ig']], local: '當地 21:00 JST' },
-      { date: '11/7', time: '20:00', m: 'tw', st: 'draft', ai: true, text: '雙十一前的整理術：把紙本變成可搜尋 PDF', pfs: [['ig']] },
+      { date: '11/3', time: '20:00', m: 'g1', st: 'draft', ai: true, text: '雙十一倒數：今年 5 折適用哪些方案', pfs: [['fb'], ['ig']] },
+      { date: '11/3', time: '20:00', m: 'g3', st: 'draft', ai: true, text: '年末セール予告：11/11 からスタート', pfs: [['ig']], local: '21:00（東京）' },
+      { date: '11/4', time: '11:00', m: 'g3', st: 'draft', ai: true, text: '年末セール：対象プランまとめ', pfs: [['line']], local: '12:00（東京）' },
+      { date: '11/5', time: '20:00', m: 'g1', st: 'draft', ai: true, text: '用戶故事：會計師的 PDF 表單流程', pfs: [['fb'], ['ig'], ['line']] },
+      { date: '11/5', time: '20:00', m: 'g3', st: 'draft', ai: true, text: '電子署名を 3 ステップで（Reels）', pfs: [['ig']], local: '21:00（東京）' },
+      { date: '11/7', time: '20:00', m: 'g1', st: 'draft', ai: true, text: '雙十一前的整理術：把紙本變成可搜尋 PDF', pfs: [['ig']] },
     );
   }
   return posts;
 }
 
-function PostCard({ p }) {
+function PostCard({ p, groupName }) {
   const s = ST[p.st];
   const to = p.item && (p.st === 'wait' || p.st === 'chg') ? '/approvals' : '/compose';
   return (
     <Link to={to} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, border: `1px ${s.style} ${s.border}`, background: '#fff', boxShadow: `inset 3px 0 0 ${s.bar}`, color: 'var(--ink)' }}>
       <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
         <span className="tiny num" style={{ fontWeight: 600 }}>{p.time}</span>
-        <Mk market={p.m} />
+        <GroupTag name={groupName(p.m)} />
         <span className="spacer" style={{ fontSize: 11, color: s.fg }}>{s.label}</span>
       </span>
       {p.local && <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{p.local}</span>}
-      <span lang={MARKETS[p.m].lang} className="small" style={{ lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.text}</span>
+      <span className="small" style={{ lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.text}</span>
       <span className="row" style={{ gap: 4 }}>
         {p.pfs.map(([pf, bad]) => <Pf key={pf} pf={pf} size="sm" bad={bad} />)}
         {p.ai && <span className="spacer" style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>AI 草稿</span>}
@@ -70,11 +69,11 @@ function PostCard({ p }) {
 export default function Calendar() {
   const store = useStore();
   const [view, setView] = useState('week');
-  const [mk, setMk] = useState('all');
+  const [filter, setFilter] = useState([]);
   const [week, setWeek] = useState(0);
 
   const posts = buildPosts({ igTwExpired: store.igTwExpired, decisions: store.state.decisions, aiDrafts: store.state.aiDrafts })
-    .filter((p) => mk === 'all' || p.m === mk);
+    .filter((p) => filter.length === 0 || filter.includes(p.m));
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(START);
     d.setDate(START.getDate() + week * 7 + i);
@@ -98,7 +97,7 @@ export default function Calendar() {
           <span style={{ fontWeight: 500 }}>2026 年 {first} – {last}</span>
         </div>
         <div className="row">
-          <Seg label="市場" value={mk} onChange={setMk} options={MARKET_FILTER} />
+          <FilterMenu label="群組" options={store.groups.map((g) => ({ id: g.id, label: g.name }))} value={filter} onChange={setFilter} />
           <Seg label="檢視" value={view} onChange={setView} options={[['week', '週'], ['list', '清單']]} />
           <span className="chip" style={{ height: 36, border: '1px solid var(--control)', background: '#fff', fontSize: 13 }}>顯示時區：台北</span>
         </div>
@@ -128,7 +127,7 @@ export default function Calendar() {
                   <span className="num" style={{ fontSize: 18, fontWeight: 600, color: d.today ? 'var(--accent)' : 'var(--ink)' }}>{d.num}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 8px' }}>
-                  {d.posts.map((p) => <PostCard key={p.m + p.time + p.text} p={p} />)}
+                  {d.posts.map((p) => <PostCard key={p.m + p.time + p.text} p={p} groupName={store.groupName} />)}
                 </div>
               </div>
             ))}
@@ -140,8 +139,8 @@ export default function Calendar() {
           {weekPosts.map((p) => (
             <div key={p.m + p.date + p.time + p.text} className="list-row">
               <span className="num" style={{ width: 120, color: 'var(--ink-2)' }}>{p.wd} {p.date} {p.time}</span>
-              <Mk market={p.m} />
-              <span lang={MARKETS[p.m].lang} style={{ flex: '1 1 260px', minWidth: 0 }}>{p.text}</span>
+              <GroupTag name={store.groupName(p.m)} />
+              <span style={{ flex: '1 1 260px', minWidth: 0 }}>{p.text}</span>
               <span className="row" style={{ gap: 4 }}>{p.pfs.map(([pf, bad]) => <Pf key={pf} pf={pf} size="sm" bad={bad} />)}</span>
               <span className="small" style={{ width: 200, textAlign: 'right', color: ST[p.st].fg }}>{p.detail || ST[p.st].label}{p.ai ? '（AI）' : ''}</span>
             </div>
@@ -149,7 +148,7 @@ export default function Calendar() {
         </div>
       )}
 
-      <p className="small muted">時間都換算成台北時間顯示，卡片第二行是當地時間。Facebook 排程交給 Meta 保管；Instagram 與 LINE 由我們的排程器送出。帳號授權失效時，相關貼文會提前標紅。</p>
+      <p className="small muted">時間都換算成台北時間顯示，卡片第二行是該帳號時區的當地時間。Facebook 排程交給 Meta 保管；Instagram 與 LINE 由我們的排程器送出。帳號授權失效時，相關貼文會提前標紅。</p>
     </main>
   );
 }

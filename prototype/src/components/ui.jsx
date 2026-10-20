@@ -1,4 +1,5 @@
-import { PF, MARKETS } from '../data.js';
+import { useEffect, useRef, useState } from 'react';
+import { PF } from '../data.js';
 
 const ICONS = {
   home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -17,6 +18,8 @@ const ICONS = {
   send: 'M12 19V5M5 12l7-7 7 7',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   close: 'M6 6l12 12M18 6 6 18',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
 };
 
 export function Icon({ name, size = 18, stroke = 1.8, ...rest }) {
@@ -36,8 +39,10 @@ export function Pf({ pf, size, bad }) {
   );
 }
 
-export function Mk({ market, dark }) {
-  return <span className={dark ? 'mk dark' : 'mk'}>{MARKETS[market].code}</span>;
+/** A group's name as a small tag; accounts without a group show nothing. */
+export function GroupTag({ name, dark }) {
+  if (!name) return null;
+  return <span className={dark ? 'mk dark' : 'mk'} style={{ padding: '0 6px' }}>{name}</span>;
 }
 
 export function Seg({ value, options, onChange, label, role = 'group' }) {
@@ -57,7 +62,46 @@ export function Seg({ value, options, onChange, label, role = 'group' }) {
   );
 }
 
-export const MARKET_FILTER = [['all', '全部'], ['tw', '台灣'], ['us', '美國'], ['jp', '日本']];
+/**
+ * A filter button with a searchable checklist, as Buffer's calendar "Channels" filter.
+ * `value` is the list of selected ids; empty means everything.
+ */
+export function FilterMenu({ label, options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const shown = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
+  const toggle = (id) => onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" className="btn btn-sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {label}
+        {value.length > 0 && <span className="count" style={{ background: 'var(--accent)', color: '#fff' }}>{value.length}</span>}
+        <Icon name="chevronDown" size={14} />
+      </button>
+      {open && (
+        <div className="card" role="dialog" aria-label={`篩選${label}`} style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 240, padding: 8, boxShadow: '0 8px 24px rgba(20,24,30,.12)' }}>
+          <input className="input" placeholder={`搜尋${label}`} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: '100%', minHeight: 34, fontSize: 13, marginBottom: 6 }} />
+          {shown.map((o) => (
+            <label key={o.id} className="row small" style={{ minHeight: 36, padding: '0 6px', borderRadius: 6, cursor: 'pointer', flexWrap: 'nowrap' }}>
+              <input type="checkbox" checked={value.includes(o.id)} onChange={() => toggle(o.id)} style={{ accentColor: 'var(--accent)' }} />
+              <span style={{ flex: 1 }}>{o.label}</span>
+              {o.hint && <span className="tiny muted">{o.hint}</span>}
+            </label>
+          ))}
+          {shown.length === 0 && <div className="tiny muted" style={{ padding: 6 }}>沒有符合的{label}</div>}
+          {value.length > 0 && <button type="button" className="btn btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => onChange([])}>清除篩選</button>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Chip({ tone = 'neutral', children }) {
   return <span className={`chip chip-${tone}`}>{children}</span>;

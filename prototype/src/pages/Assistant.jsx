@@ -4,23 +4,23 @@ import { useStore } from '../store.jsx';
 import { Icon } from '../components/ui.jsx';
 
 const PLAN = [
-  ['11/3 週二 20:00', 'TW', 'FB、IG', '雙十一倒數：今年 5 折適用哪些方案'],
-  ['11/3 週二 21:00', 'JP', 'IG', '年末セール予告：11/11 からスタート'],
-  ['11/4 週三 12:00', 'JP', 'LINE', '年末セール：対象プランまとめ（圖文卡片）'],
-  ['11/5 週四 20:00', 'TW', 'FB、IG、LINE', '用戶故事：會計師的 PDF 表單流程'],
-  ['11/5 週四 21:00', 'JP', 'IG Reels', '電子署名を 3 ステップで（美國 Reels 在地化）'],
-  ['11/7 週六 20:00', 'TW', 'IG', '雙十一前的整理術：把紙本變成可搜尋 PDF'],
+  ['11/3 週二 20:00', '台灣', 'FB、IG', '雙十一倒數：今年 5 折適用哪些方案'],
+  ['11/3 週二 21:00', '日本', 'IG', '年末セール予告：11/11 からスタート'],
+  ['11/4 週三 12:00', '日本', 'LINE', '年末セール：対象プランまとめ（圖文卡片）'],
+  ['11/5 週四 20:00', '台灣', 'FB、IG、LINE', '用戶故事：會計師的 PDF 表單流程'],
+  ['11/5 週四 21:00', '日本', 'IG Reels', '電子署名を 3 ステップで（改寫自 @kdanmobile 的 Reels）'],
+  ['11/7 週六 20:00', '台灣', 'IG', '雙十一前的整理術：把紙本變成可搜尋 PDF'],
 ];
 
 const CANNED = {
   '把這週的成效整理成給主管的 5 句話': [
-    '本週三個市場共發 16 篇、38 個發文任務，粉絲淨增 1,245 人（+0.8%）。',
+    '本週所有帳號共發 16 篇、38 個發文任務，粉絲淨增 1,245 人（+0.8%）。',
     '美國 IG 表現最好，觸及比上週高 38%，主要來自電子簽名教學 Reels。',
     '日本 LINE 開封率 61%，是轉換最好的管道；日本 FB 互動偏低（1.2%）。',
     '台灣 IG 授權在 10/18 失效，期間沒有新貼文，需要盡快重新連結。',
     '下週建議把 Reels 複製到日本與台灣，並調整台灣 LINE 的發送對象以控制額度。',
   ],
-  '找出三個市場互動最好的貼文類型': [
+  '找出各群組互動最好的貼文類型': [
     '台灣：教學型圖文（平均互動率 6.1%），用戶故事次之。',
     '美國：Reels（平均互動率 11.5%），單張圖片只有一半。',
     '日本：LINE 圖文卡片（點擊率 14%）；FB 各類型都偏低。',
@@ -73,16 +73,16 @@ export default function Assistant() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 880, width: '100%' }}>
           <div style={{ alignSelf: 'flex-end', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div className="bubble-me" style={{ maxWidth: '100%' }}>幫我規劃 11 月台灣和日本的貼文，每週 3 篇，主打雙十一和年末方案。</div>
-            <div className="row tiny" style={{ gap: 4, color: 'var(--ink-2)' }}><span className="chip chip-neutral">市場：台灣、日本</span><span className="chip chip-neutral">品牌語氣：各市場</span></div>
+            <div className="row tiny" style={{ gap: 4, color: 'var(--ink-2)' }}><span className="chip chip-neutral">群組：台灣、日本</span><span className="chip chip-neutral">品牌語氣：品牌＋群組規則</span></div>
           </div>
 
           <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap', gap: 12 }}>
             <AiAvatar />
             <div className="stack" style={{ flex: 1, minWidth: 0 }}>
-              <div>排好了，兩個市場各 12 篇。依過去 30 天的資料：台灣 FB 週二、四 20:00 互動最好；日本 IG 在 21:00、LINE 在 12:00 開封率最高。日本對雙十一比較陌生，所以日本版主打「年末セール」，雙十一只當起點。</div>
+              <div>排好了，兩個群組各 12 篇。依過去 30 天的資料：台灣 FB 週二、四 20:00 互動最好；日本 IG 在 21:00、LINE 在 12:00 開封率最高。日本對雙十一比較陌生，所以日本版主打「年末セール」，雙十一只當起點。</div>
               <div className="card table-wrap">
                 <table style={{ minWidth: 620 }}>
-                  <thead><tr><th>當地時間</th><th>市場</th><th>平台</th><th>主題</th></tr></thead>
+                  <thead><tr><th>帳號時區的時間</th><th>群組</th><th>平台</th><th>主題</th></tr></thead>
                   <tbody>{PLAN.map(([w, m, p, t]) => <tr key={w + m}><td className="num" style={{ whiteSpace: 'nowrap' }}>{w}</td><td><span className="mk">{m}</span></td><td style={{ whiteSpace: 'nowrap' }}>{p}</td><td>{t}</td></tr>)}</tbody>
                 </table>
                 <div className="small muted" style={{ padding: '10px 18px', borderTop: '1px solid var(--line-soft)' }}>還有 18 篇（原型只列前 6 篇）</div>
@@ -138,7 +138,7 @@ export default function Assistant() {
             <label htmlFor="msg" className="sr-only">輸入訊息</label>
             <textarea id="msg" rows={2} value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="問成效、請它排內容、或改寫一篇貼文" style={{ border: 0, outline: 'none', resize: 'none' }} />
             <div className="row tiny" style={{ gap: 6 }}>
-              <span className="chip chip-neutral">市場：台灣、日本</span>
+              <span className="chip chip-neutral">群組：台灣、日本</span>
               <span className="chip chip-neutral">資料：近 30 天</span>
               <button type="submit" className="btn btn-primary icon-btn spacer" aria-label="送出" disabled={thinking} style={{ width: 36, height: 36, minHeight: 36 }}><Icon name="send" size={16} stroke={2} /></button>
             </div>
