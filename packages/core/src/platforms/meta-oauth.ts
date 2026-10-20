@@ -11,13 +11,15 @@ export const META_SCOPES = [
   'business_management',
   'instagram_basic',
   'instagram_content_publish',
-  // Reach and views; optional, so a connection without them still publishes.
+  // The rest only feed analytics, so a connection without them still publishes.
+  // Listing a Page's posts and reading their reactions and comments needs this one.
+  'pages_read_user_content',
   'read_insights',
   'instagram_manage_insights',
 ];
 
 /** Scopes without which a connected account can still publish, only with fewer numbers. */
-export const OPTIONAL_META_SCOPES = ['read_insights', 'instagram_manage_insights'];
+export const OPTIONAL_META_SCOPES = ['pages_read_user_content', 'read_insights', 'instagram_manage_insights'];
 
 export type MetaGrant = { pages: MetaPage[]; missing: string[] };
 
