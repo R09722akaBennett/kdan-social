@@ -213,15 +213,25 @@ export async function bootstrapWorkspace(db: Db, a: { name: string; owner: { use
 export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { workspaceId: string; marketId: string; channelId: string; channelSecret: string; actor: string }) {
   const channelId = a.channelId.trim();
   const channelSecret = a.channelSecret.trim();
-  if (!/^\d+$/.test(channelId) || !channelSecret) throw new ConnectError('請填入 Channel ID（純數字）與 Channel secret。');
+  if (!/^\d+$/.test(channelId)) throw new ConnectError('Channel ID 應該是一串數字，在 LINE Developers 的 Basic settings 分頁。');
+  // Channel secrets are 32 hex characters. The usual mistake is pasting the much longer
+  // channel access token from the Messaging API tab, which LINE only reports as
+  // "Invalid client_credentials".
+  if (!/^[0-9a-f]{32}$/i.test(channelSecret)) {
+    throw new ConnectError(`Channel secret 應該是 32 個英數字元（在 Basic settings 分頁），你貼的有 ${channelSecret.length} 個字元。${channelSecret.length > 32 ? '很長的話，可能是貼成了 Messaging API 分頁的 Channel access token。' : ''}`);
+  }
   if (!(await listMarkets(db, a.workspaceId)).some((m) => m.id === a.marketId)) throw new ConnectError('找不到這個市場，請重新整理後再試。');
 
   let info;
   try {
     info = await line.botInfo({ channelId, channelSecret });
   } catch (e) {
-    if (e instanceof PlatformError && e.kind === 'auth') throw new ConnectError('LINE 不接受這組 Channel ID 與 Channel secret，請確認是 Messaging API channel 的值。');
-    throw new ConnectError('暫時連不到 LINE，請稍後再試。');
+    const cause = e instanceof Error ? e.message : String(e);
+    if (e instanceof PlatformError && e.kind === 'auth') {
+      if (/client_id/i.test(cause)) throw new ConnectError('LINE 找不到這個 Channel ID，請確認是 Messaging API channel 的 ID。', { cause });
+      throw new ConnectError('Channel secret 和這個 Channel ID 對不上。請到同一個 channel 的 Basic settings 分頁重新複製 Channel secret；若最近按過 Issue 重新產生，要用新的。', { cause });
+    }
+    throw new ConnectError('暫時連不到 LINE，請稍後再試。', { cause });
   }
   const ref = { workspaceId: a.workspaceId, platform: 'line' as const, externalId: channelId };
   const name = info.basicId ? `${info.displayName}（${info.basicId}）` : info.displayName || `LINE ${channelId}`;

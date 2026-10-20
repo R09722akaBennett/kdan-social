@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, ComposeError, completeMetaConnect, ConnectError, connectLine, globalPublishingEnabled, lineClient, loadKey, queueDryRunTest, setPublishing } from '@kdan-social/core';
+import { AccessError, ComposeError, completeMetaConnect, ConnectError, connectLine, globalPublishingEnabled, lineClient, loadKey, mask, queueDryRunTest, setPublishing } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -73,7 +73,10 @@ export async function connectLineAccount(formData: FormData) {
       actor: user.email,
     }));
   } catch (e) {
-    if (e instanceof ConnectError) redirect(`/app/connect/line?error=${encodeURIComponent(e.message)}`);
+    if (e instanceof ConnectError) {
+      if (e.cause) console.error(`LINE connect failed for ${user.email}: ${mask(String(e.cause))}`);
+      redirect(`/app/connect/line?error=${encodeURIComponent(e.message)}`);
+    }
     throw e;
   }
   revalidatePath('/app');
