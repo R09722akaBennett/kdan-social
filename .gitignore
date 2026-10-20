@@ -1,0 +1,11 @@
+node_modules
+.env*
+!.env.example
+.vercel
+.next
+dist
+coverage
+.playwright-cli
+next-env.d.ts
+*.tsbuildinfo
+/kdan-social 產品設計.html
