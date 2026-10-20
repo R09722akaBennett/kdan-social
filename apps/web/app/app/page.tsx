@@ -1,4 +1,4 @@
-import { globalPublishingEnabled, listAccounts, listMarkets, publishingAllowed, recentTasks } from '@kdan-social/core';
+import { globalPublishingEnabled, lineClient, lineUsage, listAccounts, listMarkets, loadKey, publishingAllowed, recentTasks } from '@kdan-social/core';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { queueTest, signOut, togglePublishing } from './actions';
@@ -10,6 +10,7 @@ const STATUS: Record<string, [string, string]> = {
 };
 const NOTICE: Record<string, [string, string]> = {
   connected: ['ok', '已連結 {n} 個帳號。'],
+  line_connected: ['ok', '已連結 LINE 官方帳號「{n}」。'],
   test_queued: ['ok', '已排入一則測試貼文，一分鐘內會被處理成 dry-run，重新整理即可看到結果。'],
   test_refused: ['err', '對外發文已開啟，測試貼文會真的發出去，所以沒有排入。'],
   meta_cancelled: ['warn', '你在 Facebook 取消了授權，沒有連結任何帳號。'],
@@ -41,7 +42,13 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
 
   const db = getDb();
   const { workspace } = membership;
-  const [markets, accounts, tasks] = await Promise.all([listMarkets(db, workspace.id), listAccounts(db, workspace.id), recentTasks(db, workspace.id)]);
+  const [markets, accounts, tasks, usage] = await Promise.all([
+    listMarkets(db, workspace.id),
+    listAccounts(db, workspace.id),
+    recentTasks(db, workspace.id),
+    lineUsage(db, loadKey(), lineClient(), { workspaceId: workspace.id }),
+  ]);
+  const fmtN = (n: number) => n.toLocaleString('en-US');
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
   const note = notice ? NOTICE[notice] : undefined;
 
@@ -54,6 +61,7 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
         </div>
         <div className="row">
           <a className="btn" href="/api/meta/connect">連結 Facebook 粉專</a>
+          <a className="btn" href="/app/connect/line">連結 LINE 官方帳號</a>
         </div>
       </header>
 
@@ -96,6 +104,17 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
                   {a.status === 'active'
                     ? <span style={{ color: 'var(--ok)' }}>正常{a.lastCheckedAt ? `（${fmt(a.lastCheckedAt)} 檢查過）` : ''}</span>
                     : <span style={{ color: 'var(--err)' }}>授權失效：{a.statusDetail ?? '請重新連結'}</span>}
+                  {a.platform === 'line' && (() => {
+                    const u = usage.find((x) => x.accountId === a.id);
+                    if (!u) return null;
+                    if (u.error) return <div className="tiny" style={{ color: 'var(--warn)' }}>{u.error}</div>;
+                    return (
+                      <div className="tiny muted">
+                        本月已用 {fmtN(u.quota?.used ?? 0)}{u.quota?.limit != null ? ` / ${fmtN(u.quota.limit)}` : ''} 則
+                        {u.audience ? ` · 可觸及 ${fmtN(u.audience.targetedReaches)} 人（好友 ${fmtN(u.audience.followers)}）` : ' · 好友數隔天才有資料'}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {a.status === 'active' && !live && (
                   <form action={queueTest}>
@@ -103,7 +122,7 @@ export default async function Workspace({ searchParams }: { searchParams: Promis
                     <button className="btn btn-sm" type="submit">送一則測試 dry-run</button>
                   </form>
                 )}
-                {a.status !== 'active' && <a className="btn btn-sm btn-danger" href="/api/meta/connect">重新連結</a>}
+                {a.status !== 'active' && <a className="btn btn-sm btn-danger" href={a.platform === 'line' ? '/app/connect/line' : '/api/meta/connect'}>重新連結</a>}
               </div>
             ))}
           </section>

@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, ComposeError, completeMetaConnect, globalPublishingEnabled, loadKey, queueDryRunTest, setPublishing } from '@kdan-social/core';
+import { AccessError, ComposeError, completeMetaConnect, ConnectError, connectLine, globalPublishingEnabled, lineClient, loadKey, queueDryRunTest, setPublishing } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -59,4 +59,23 @@ export async function togglePublishing(formData: FormData) {
   }
   revalidatePath('/app');
   redirect(`/app?notice=${enable ? 'publishing_on' : 'publishing_off'}`);
+}
+
+export async function connectLineAccount(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  let name = '';
+  try {
+    ({ name } = await connectLine(getDb(), loadKey(), lineClient(), {
+      workspaceId: workspace.id,
+      marketId: String(formData.get('marketId')),
+      channelId: String(formData.get('channelId') ?? ''),
+      channelSecret: String(formData.get('channelSecret') ?? ''),
+      actor: user.email,
+    }));
+  } catch (e) {
+    if (e instanceof ConnectError) redirect(`/app/connect/line?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app');
+  redirect(`/app?notice=line_connected&n=${encodeURIComponent(name)}`);
 }

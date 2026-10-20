@@ -22,7 +22,7 @@ export type SubmitState = { error?: string };
 
 export async function submitPost(_prev: SubmitState, formData: FormData): Promise<SubmitState> {
   const { user, workspace, role } = await requireWorkspace();
-  let payload: { body: string; overrides: Record<string, string>; accountIds: string[]; media: Array<{ url: string; alt?: string }>; schedule: Schedule; viewerTimeZone: string };
+  let payload: { body: string; overrides: Record<string, string>; accountIds: string[]; media: Array<{ url: string; previewUrl?: string; alt?: string }>; schedule: Schedule; viewerTimeZone: string };
   try {
     payload = JSON.parse(String(formData.get('payload')));
   } catch {
@@ -30,7 +30,7 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   }
   // Uploads are signed under the workspace's own folder, so only accept those URLs back.
   const prefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/${workspace.id}/`;
-  if (payload.media.some((m) => !m.url.startsWith(prefix))) return { error: '圖片來源不正確，請重新上傳。' };
+  if (payload.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => u.startsWith(prefix)))) return { error: '圖片來源不正確，請重新上傳。' };
   try {
     await createPost(getDb(), { ...payload, workspaceId: workspace.id, actor: user.email, role });
   } catch (e) {
