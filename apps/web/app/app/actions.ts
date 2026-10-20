@@ -1,0 +1,48 @@
+'use server';
+
+import { AccessError, completeMetaConnect, globalPublishingEnabled, loadKey, queueDryRunTest } from '@kdan-social/core';
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { requireWorkspace } from '@/lib/auth';
+import { getDb } from '@/lib/server';
+import { supabaseServer } from '@/lib/supabase';
+
+// Server actions are public endpoints: every one re-checks the session and workspace
+// itself instead of trusting that only the page's own form can call it.
+
+export async function queueTest(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  try {
+    await queueDryRunTest(getDb(), { workspaceId: workspace.id, accountId: String(formData.get('accountId')), globalEnabled: globalPublishingEnabled(), actor: user.email });
+  } catch (e) {
+    if (e instanceof AccessError) redirect('/app?notice=test_refused');
+    throw e;
+  }
+  revalidatePath('/app');
+  redirect('/app?notice=test_queued');
+}
+
+export async function saveMetaConnection(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  const sessionId = String(formData.get('session'));
+  const selections = formData.getAll('page').map((v) => {
+    const pageId = String(v);
+    return { pageId, marketId: String(formData.get(`market:${pageId}`)), instagram: formData.get(`ig:${pageId}`) === 'on' };
+  });
+  if (selections.length === 0) redirect(`/app/connect/meta?session=${sessionId}&error=none`);
+  let connected = 0;
+  try {
+    ({ connected } = await completeMetaConnect(getDb(), loadKey(), { sessionId, workspaceId: workspace.id, userId: user.id, actor: user.email, selections }));
+  } catch (e) {
+    if (e instanceof AccessError) redirect('/app?notice=meta_expired');
+    throw e;
+  }
+  revalidatePath('/app');
+  redirect(`/app?notice=connected&n=${connected}`);
+}
+
+export async function signOut() {
+  const supabase = await supabaseServer();
+  await supabase.auth.signOut();
+  redirect('/login');
+}
