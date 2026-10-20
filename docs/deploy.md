@@ -45,6 +45,11 @@
    | `SUPABASE_SECRET_KEY` | Supabase 的 secret key，只用來簽圖片上傳網址；會繞過 RLS，只能放在伺服器端 |
    | `META_APP_ID` | Meta app 的 App ID |
    | `META_APP_SECRET` | Meta app 的 App Secret |
+   | `AI_MODEL` | AI 寫文案用的模型，格式 `vertex/<模型>`：例如 `vertex/gemini-3.8-flash`、`vertex/claude-opus-5-5`、`vertex/xai/grok-4`（以 GCP Model Garden 實際開放的 ID 為準）。沒設時 AI 按鈕不會出現，其他功能照常 |
+   | `AI_MODEL_INSIGHTS` | 選填：成效頁「AI 分析」改用別的模型，例如 `vertex/gemini-4-argon`；沒設就用 `AI_MODEL` |
+   | `GCP_PROJECT_ID` | 開了 Vertex AI 的 GCP 專案 ID |
+   | `GCP_LOCATION` | Vertex 區域，預設 `global`；有些合作夥伴模型只在特定區域（例如 `us-east5`） |
+   | `GCP_SERVICE_ACCOUNT_JSON` | 有 `Vertex AI User` 角色的 service account 金鑰（整份 JSON）。只放在 Vercel 環境變數，不進版本控制 |
 
 3. Function 區域設成和 Supabase 同區（目前是 `sin1`）。
 

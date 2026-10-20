@@ -39,12 +39,13 @@
 
 - [ ] LINE 官方帳號串接（客戶貼 channel 憑證），台灣與日本
 - [ ] 行事曆、審核流程、通知
-- [ ] AI 改寫、在地化、發布前檢查、品牌語氣
+- [x] AI 改寫、依帳號改寫、品牌語氣（含試寫）、禁用詞檢查
 - [ ] onboarding
 
 ## 階段 3 — Bandai 開通（第 8–10 週起）
 
-- [ ] 成效頁（FB 改用 views 系列指標）、AI 週報、推薦時段
+- [x] 成效頁：粉絲數走勢、每篇互動（FB／IG／LINE）、AI 分析
+- [ ] 觸及人數（需 `read_insights`、`instagram_manage_insights`，App Review 時一起申請）、AI 週報、推薦時段
 - [ ] 成員與權限、操作紀錄
 - [ ] Meta 商業驗證（用 KDAN 公司實體）
 - [ ] App Review：各權限 Advanced Access、操作錄影、隱私權政策、資料刪除說明
