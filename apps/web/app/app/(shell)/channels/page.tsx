@@ -1,7 +1,7 @@
 import { followerStats, formatInZone, globalPublishingEnabled, lineClient, lineUsage, listAccounts, listGroups, loadKey, publishingAllowed } from '@kdan-social/core';
 import type { CSSProperties } from 'react';
 import { DeleteGroupButton, FilterMenu, GroupDialogButton, TimeZoneSelect } from '@/components/groups';
-import { GroupTag, Pf, PLATFORM, fmtN, zoneOptions } from '@/components/ui';
+import { EmptyState, GroupTag, Pf, PLATFORM, fmtN, zoneOptions } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { deleteGroupAction, queueTest, saveGroupAction, setTimeZoneAction } from '@/app/app/actions';
@@ -43,7 +43,11 @@ export default async function Channels({ searchParams }: { searchParams: Promise
           <h2 id="h-accounts">帳號 <span className="small muted">{accounts.length}</span></h2>
           <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
         </div>
-        {accounts.length === 0 && <div className="list-row small muted">還沒有連結帳號，從下方「連結新帳號」開始。</div>}
+        {accounts.length === 0 && (
+          <EmptyState icon="link" title="還沒有連結帳號">
+            從下方選一個平台開始。連結 Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號後，就能排程發文、看成效。
+          </EmptyState>
+        )}
         {shown.map((a) => {
           const expired = a.status !== 'active';
           const f = followers.get(a.id);

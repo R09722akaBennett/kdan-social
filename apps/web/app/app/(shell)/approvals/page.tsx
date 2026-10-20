@@ -1,6 +1,6 @@
 import { canReview, formatInZone, reviewDetail, reviewQueue, type QueueItem, type ReviewState } from '@kdan-social/core';
 import type { CSSProperties } from 'react';
-import { Chip, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/ui';
+import { Chip, EmptyState, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { reviewAction } from '@/app/app/actions';
@@ -59,7 +59,11 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
         </section>
 
         {!d ? (
-          <section className="card card-pad small muted" style={{ flex: '999 1 560px' }}>沒有要審核的貼文。編輯送出的貼文會出現在這裡。</section>
+          <section className="card" style={{ flex: '999 1 560px' }}>
+            {workspace.requiresReview
+              ? <EmptyState icon="check" title="沒有要審核的貼文">編輯送出的貼文會出現在這裡，有新的送審時也會通知擁有者和管理員。擁有者和管理員自己發的貼文不需要審核。</EmptyState>
+              : <EmptyState icon="check" title="這個工作區不需要審核" action={role === 'owner' || role === 'admin' ? <a className="btn" href="/app/settings">到設定開啟審核</a> : undefined}>每個人建立的貼文都會直接排程。開啟審核後，編輯的貼文要擁有者或管理員核准才會發出。</EmptyState>}
+          </section>
         ) : (
           <section aria-label="審核內容" style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="card card-pad stack" style={{ gap: 8 }}>

@@ -123,3 +123,18 @@ export function errorText(raw: string | null): string | null {
   if (!raw) return null;
   return ERRORS.find(([re]) => re.test(raw))?.[1] ?? `發送失敗：${raw}`;
 }
+
+/**
+ * A section with nothing in it yet: what will appear here and the one action that
+ * fills it, after Klaviyo's and Whop's empty dashboards.
+ */
+export function EmptyState({ icon, title, children, action }: { icon: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <span className="empty-icon"><Icon name={icon} size={22} /></span>
+      <div style={{ fontWeight: 600 }}>{title}</div>
+      {children && <div className="small" style={{ color: 'var(--ink-2)', maxWidth: 420 }}>{children}</div>}
+      {action && <div className="row" style={{ justifyContent: 'center', marginTop: 4 }}>{action}</div>}
+    </div>
+  );
+}

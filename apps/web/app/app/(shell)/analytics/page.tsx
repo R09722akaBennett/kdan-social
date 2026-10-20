@@ -4,7 +4,7 @@ import { BarList } from '@/components/barlist';
 import { TrendChart } from '@/components/charts';
 import { FilterMenu } from '@/components/groups';
 import { InsightsButton } from '@/components/insights';
-import { AiHeader, GroupTag, Pf, SegLinks, fmtN } from '@/components/ui';
+import { AiHeader, EmptyState, GroupTag, Pf, SegLinks, fmtN } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { insightsAction } from '@/app/app/actions';
@@ -84,6 +84,13 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
         </div>
       </header>
 
+      {accounts.length === 0 ? (
+        <section className="card">
+          <EmptyState icon="chart" title="還沒有成效資料" action={<a className="btn btn-primary" href="/app/channels#add">連結帳號</a>}>
+            連結帳號後，隔天起每天累積粉絲數、觸及與觀看；Facebook 和 Instagram 過去 {IMPORT_WINDOW_DAYS} 天的貼文也會一起匯入。
+          </EmptyState>
+        </section>
+      ) : (<>
       <nav className="tabs" aria-label="成效分頁" style={{ padding: 0 }}>
         {([['overview', '總覽'], ['posts', '貼文'], ['audience', '受眾']] as const).map(([k, l]) => <a key={k} href={href({ tab: k })} aria-current={tab === k ? 'page' : undefined}>{l}</a>)}
       </nav>
@@ -245,6 +252,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
           })}
         </section>
       )}
+      </>)}
     </main>
   );
 }

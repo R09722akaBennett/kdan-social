@@ -1,6 +1,6 @@
 import { clockInZone, dayInZone, formatInZone, listGroups, tasksBetween, weekStart, type ScheduledTask } from '@kdan-social/core';
 import { FilterMenu } from '@/components/groups';
-import { errorText, GroupTag, Icon, Pf, SegLinks, zoneName } from '@/components/ui';
+import { EmptyState, errorText, GroupTag, Icon, Pf, SegLinks, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 
@@ -108,7 +108,13 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
         <span className="row" style={{ gap: 6 }}><span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, border: '1px dashed #8A9099' }} />dry-run（對外發文關閉時）</span>
       </div>
 
-      {view === 'week' ? (
+      {tasks.length === 0 ? (
+        <section className="card">
+          <EmptyState icon="calendar" title={filter.length ? '這週選的群組沒有貼文' : '這週沒有貼文'} action={<a className="btn btn-primary" href="/app/posts/new">新增貼文</a>}>
+            排程、已發布和 dry-run 的貼文都會照時間排在這裡。可以用上方的箭頭切到其他週。
+          </EmptyState>
+        </section>
+      ) : view === 'week' ? (
         <div className="card table-wrap">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', minWidth: 1000 }}>
             {days.map((d) => (
@@ -143,7 +149,6 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
         </div>
       ) : (
         <div className="card">
-          {tasks.length === 0 && <div className="list-row muted">這週沒有貼文。</div>}
           {days.flatMap((d) => d.cards.map((c) => ({ d, c }))).map(({ d, c }) => {
             const s = ST[c.state] ?? ST.scheduled!;
             const fb = c.tasks.find((t) => t.platform === 'facebook' && t.externalPostId);
