@@ -1,6 +1,8 @@
 import { dispatchDue, globalPublishingEnabled } from '@kdan-social/core';
 import { deps, isCronRequest } from '@/lib/server';
 
+// Called every minute by Supabase Cron (docs/deploy.md), not Vercel Cron: the Hobby
+// plan only runs Vercel Cron once a day.
 export const maxDuration = 60;
 
 export async function GET(req: Request) {
