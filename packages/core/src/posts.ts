@@ -24,7 +24,7 @@ export type ComposeInput = {
   role: Role;
   body: string;
   /** Per-platform text that replaces `body` for that platform. */
-  overrides?: Partial<Record<'facebook' | 'instagram', string>>;
+  overrides?: Partial<Record<'facebook' | 'instagram' | 'line', string>>;
   accountIds: string[];
   media: MediaItem[];
   schedule: Schedule;
@@ -34,6 +34,9 @@ export type ComposeInput = {
 };
 
 const IG_CAPTION_MAX = 2200;
+const LINE_TEXT_MAX = 5000;
+// One broadcast carries at most five message objects: the text plus four images.
+const LINE_IMAGES_MAX = 4;
 const MEDIA_MAX = 10;
 // A post scheduled a moment ago is still "now"; anything older was a mistake.
 const PAST_GRACE_MS = 60_000;
@@ -51,7 +54,7 @@ export async function createPost(db: Db, input: ComposeInput) {
   const now = input.now ?? new Date();
   if (input.accountIds.length === 0) throw new ComposeError('請至少選一個要發的帳號。');
   if (input.media.length > MEDIA_MAX) throw new ComposeError(`圖片最多 ${MEDIA_MAX} 張。`);
-  if (input.media.some((m) => !/^https:\/\//.test(m.url))) throw new ComposeError('圖片網址必須是 https。');
+  if (input.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => /^https:\/\//.test(u)))) throw new ComposeError('圖片網址必須是 https。');
 
   const rows = await db
     .select({ account: connectedAccounts, market: markets })
@@ -60,16 +63,20 @@ export async function createPost(db: Db, input: ComposeInput) {
     .where(and(eq(connectedAccounts.workspaceId, input.workspaceId), inArray(connectedAccounts.id, input.accountIds)));
   if (rows.length !== new Set(input.accountIds).size) throw new ComposeError('有帳號不屬於這個工作區，請重新整理後再試。');
 
-  const textFor = (platform: string) => (input.overrides?.[platform as 'facebook' | 'instagram'] ?? input.body).trim();
+  const textFor = (platform: string) => (input.overrides?.[platform as 'facebook' | 'instagram' | 'line'] ?? input.body).trim();
   for (const { account } of rows) {
     if (account.status !== 'active') throw new ComposeError(`「${account.name}」的授權已失效，請先重新連結。`);
-    if (account.platform === 'line') throw new ComposeError('LINE 發文還沒開放。');
     const text = textFor(account.platform);
     if (account.platform === 'instagram') {
       if (input.media.length === 0) throw new ComposeError(`Instagram（${account.name}）一定要附至少一張圖片。`);
       if (text.length > IG_CAPTION_MAX) throw new ComposeError(`Instagram 內文最多 ${IG_CAPTION_MAX} 字，目前 ${text.length} 字。`);
     }
     if (account.platform === 'facebook' && !text && input.media.length === 0) throw new ComposeError('Facebook 貼文要有文字或圖片。');
+    if (account.platform === 'line') {
+      if (!text && input.media.length === 0) throw new ComposeError('LINE 訊息要有文字或圖片。');
+      if (text.length > LINE_TEXT_MAX) throw new ComposeError(`LINE 訊息最多 ${LINE_TEXT_MAX} 字，目前 ${text.length} 字。`);
+      if (input.media.length > LINE_IMAGES_MAX) throw new ComposeError(`LINE 一次最多 ${LINE_IMAGES_MAX} 張圖片。`);
+    }
   }
 
   const runAtFor = (timeZone: string): Date => {

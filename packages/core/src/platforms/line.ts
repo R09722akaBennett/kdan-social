@@ -24,10 +24,21 @@ export function lineInsightDay(now: Date): string {
 }
 
 export type LineQuota = { limit: number | null; used: number };
+export type LineBotInfo = { userId: string; basicId: string; displayName: string };
+export type LineAudience = { followers: number; targetedReaches: number };
 
 export type LineClient = PlatformClient<LineCredentials> & {
   /** This month's message limit (null when the plan has none) and messages sent so far. */
   quota(account: AccountRef<LineCredentials>): Promise<LineQuota>;
+  /**
+   * The Official Account behind the credentials.
+   *
+   * Raises:
+   *   PlatformError: `auth` when the channel ID or secret is wrong.
+   */
+  botInfo(credentials: LineCredentials): Promise<LineBotInfo>;
+  /** Yesterday's friends and the reachable share of them (friends minus blocks), or null before LINE has the numbers. */
+  audience(account: AccountRef<LineCredentials>, now: Date): Promise<LineAudience | null>;
 };
 
 /**
@@ -38,6 +49,16 @@ export type LineClient = PlatformClient<LineCredentials> & {
  */
 export function lineClient(fetchFn: FetchFn = fetch): LineClient {
   const auth = async (a: AccountRef<LineCredentials>) => ({ Authorization: `Bearer ${await issueToken(fetchFn, a.credentials)}` });
+  const audience = async (account: AccountRef<LineCredentials>, now: Date): Promise<LineAudience | null> => {
+    const { body } = await request(fetchFn, 'line', `${API}/v2/bot/insight/followers?date=${lineInsightDay(now)}`, {
+      method: 'GET',
+      headers: await auth(account),
+      idempotent: true,
+    });
+    const b = body as { status?: string; followers?: number; targetedReaches?: number };
+    if (b.status !== 'ready' || typeof b.followers !== 'number') return null;
+    return { followers: b.followers, targetedReaches: b.targetedReaches ?? b.followers };
+  };
 
   return {
     platform: 'line',
@@ -45,7 +66,8 @@ export function lineClient(fetchFn: FetchFn = fetch): LineClient {
       if (input.media.length > 4) throw new PlatformError('line', 'invalid', 'LINE allows one text and at most four images per broadcast');
       const messages = [
         ...(input.body ? [{ type: 'text', text: input.body }] : []),
-        ...input.media.map((m) => ({ type: 'image', originalContentUrl: m.url, previewImageUrl: m.url })),
+        // LINE caps preview images at 1 MB; the composer uploads a small copy for that.
+        ...input.media.map((m) => ({ type: 'image', originalContentUrl: m.url, previewImageUrl: m.previewUrl ?? m.url })),
       ];
       if (messages.length === 0) throw new PlatformError('line', 'invalid', 'Nothing to send');
       try {
@@ -55,6 +77,9 @@ export function lineClient(fetchFn: FetchFn = fetch): LineClient {
           body: JSON.stringify({ messages }),
           // The retry key makes a repeat harmless: LINE answers 409 instead of sending again.
           idempotent: true,
+          // A spent monthly quota also comes back as 429, but it will not recover until next
+          // month, so retrying it in a few minutes only burns attempts.
+          classify: (status, body) => (status === 429 && /monthly limit/i.test(JSON.stringify(body)) ? 'invalid' : null),
         });
         return { externalPostId: headers.get('x-line-request-id') ?? input.idempotencyKey };
       } catch (e) {
@@ -63,13 +88,17 @@ export function lineClient(fetchFn: FetchFn = fetch): LineClient {
       }
     },
     async followers(account, now) {
-      const { body } = await request(fetchFn, 'line', `${API}/v2/bot/insight/followers?date=${lineInsightDay(now)}`, {
+      return (await audience(account, now))?.followers ?? null;
+    },
+    audience,
+    async botInfo(credentials) {
+      const { body } = await request(fetchFn, 'line', `${API}/v2/bot/info`, {
         method: 'GET',
-        headers: await auth(account),
+        headers: { Authorization: `Bearer ${await issueToken(fetchFn, credentials)}` },
         idempotent: true,
       });
-      const b = body as { status?: string; followers?: number };
-      return b.status === 'ready' && typeof b.followers === 'number' ? b.followers : null;
+      const b = body as Partial<LineBotInfo>;
+      return { userId: String(b.userId ?? ''), basicId: String(b.basicId ?? ''), displayName: String(b.displayName ?? '') };
     },
     async quota(account) {
       const headers = await auth(account);

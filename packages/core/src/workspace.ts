@@ -13,10 +13,14 @@ import {
   workspaces,
   type Db,
 } from './db/index';
+import { PlatformError } from './platforms/http';
+import type { LineAudience, LineClient, LineQuota } from './platforms/line';
 import type { MetaPage } from './platforms/meta-oauth';
 import { publishingAllowed } from './writes';
 
 export class AccessError extends Error {}
+/** A connection problem whose message is shown to the user as is. */
+export class ConnectError extends Error {}
 
 const CONNECT_TTL_MS = 15 * 60_000;
 
@@ -195,3 +199,68 @@ export async function bootstrapWorkspace(db: Db, a: { name: string; owner: { use
   });
 }
 
+
+/**
+ * Connect a LINE Official Account from its Messaging API channel ID and secret.
+ *
+ * The credentials are checked with LINE before anything is saved, and the account's
+ * name comes from LINE, so a typo cannot create a dead account. Connecting the same
+ * channel again replaces its secret and reactivates it.
+ *
+ * Raises:
+ *   ConnectError: the market is not in the workspace, LINE rejects the credentials, or LINE is unreachable.
+ */
+export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { workspaceId: string; marketId: string; channelId: string; channelSecret: string; actor: string }) {
+  const channelId = a.channelId.trim();
+  const channelSecret = a.channelSecret.trim();
+  if (!/^\d+$/.test(channelId) || !channelSecret) throw new ConnectError('請填入 Channel ID（純數字）與 Channel secret。');
+  if (!(await listMarkets(db, a.workspaceId)).some((m) => m.id === a.marketId)) throw new ConnectError('找不到這個市場，請重新整理後再試。');
+
+  let info;
+  try {
+    info = await line.botInfo({ channelId, channelSecret });
+  } catch (e) {
+    if (e instanceof PlatformError && e.kind === 'auth') throw new ConnectError('LINE 不接受這組 Channel ID 與 Channel secret，請確認是 Messaging API channel 的值。');
+    throw new ConnectError('暫時連不到 LINE，請稍後再試。');
+  }
+  const ref = { workspaceId: a.workspaceId, platform: 'line' as const, externalId: channelId };
+  const name = info.basicId ? `${info.displayName}（${info.basicId}）` : info.displayName || `LINE ${channelId}`;
+  const credentials = encrypt(JSON.stringify({ channelId, channelSecret }), key, accountContext(ref));
+  await db
+    .insert(connectedAccounts)
+    .values({ ...ref, marketId: a.marketId, name, credentials })
+    .onConflictDoUpdate({
+      target: [connectedAccounts.workspaceId, connectedAccounts.platform, connectedAccounts.externalId],
+      set: { marketId: a.marketId, name, credentials, status: 'active', statusDetail: null },
+    });
+  await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'account.connected', target: channelId, detail: { platform: 'line', name } });
+  return { name };
+}
+
+export type LineUsage = { accountId: string; name: string; quota: LineQuota | null; audience: LineAudience | null; error: string | null };
+
+/**
+ * This month's quota and yesterday's reachable friends for each active LINE account.
+ *
+ * A broadcast costs one message per reachable friend, so these two numbers are what the
+ * composer needs to warn before a post would run the quota out. Failures are reported
+ * per account instead of failing the page; a rejected secret marks the account expired.
+ */
+export async function lineUsage(db: Db, key: Buffer, line: LineClient, a: { workspaceId: string; now?: Date }): Promise<LineUsage[]> {
+  const now = a.now ?? new Date();
+  const accounts = await db.select().from(connectedAccounts).where(and(eq(connectedAccounts.workspaceId, a.workspaceId), eq(connectedAccounts.platform, 'line'), eq(connectedAccounts.status, 'active')));
+  return Promise.all(accounts.map(async (acc): Promise<LineUsage> => {
+    const base = { accountId: acc.id, name: acc.name };
+    try {
+      const ref = { externalId: acc.externalId, credentials: JSON.parse(decrypt(acc.credentials, key, accountContext(acc))) };
+      const [quota, audience] = await Promise.all([line.quota(ref), line.audience(ref, now)]);
+      return { ...base, quota, audience, error: null };
+    } catch (e) {
+      if (e instanceof PlatformError && e.kind === 'auth') {
+        await db.update(connectedAccounts).set({ status: 'expired', statusDetail: e.message, lastCheckedAt: now }).where(eq(connectedAccounts.id, acc.id));
+        return { ...base, quota: null, audience: null, error: '授權失效，請重新連結。' };
+      }
+      return { ...base, quota: null, audience: null, error: '暫時讀不到 LINE 的用量。' };
+    }
+  }));
+}

@@ -3,7 +3,7 @@ export * from './writes';
 export * from './platforms/http';
 export * from './platforms/types';
 export { facebookClient, instagramClient, GRAPH_VERSION } from './platforms/meta';
-export { lineClient, lineInsightDay, type LineClient, type LineQuota } from './platforms/line';
+export { lineClient, lineInsightDay, type LineAudience, type LineBotInfo, type LineClient, type LineQuota } from './platforms/line';
 export { dispatchDue, MAX_ATTEMPTS, type Clients, type DispatchSummary } from './publish/dispatch';
 export { snapshotFollowers, type SnapshotSummary } from './snapshot';
 

@@ -108,7 +108,8 @@ export const posts = pgTable('posts', {
   createdAt: createdAt(),
 });
 
-export type MediaItem = { url: string; alt?: string };
+/** `previewUrl` is a small copy for LINE, whose preview images must be under 1 MB. */
+export type MediaItem = { url: string; alt?: string; previewUrl?: string };
 
 export const postVariants = pgTable(
   'post_variants',

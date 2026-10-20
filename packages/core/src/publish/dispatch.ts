@@ -11,13 +11,14 @@ import {
   type Db,
 } from '../db/index';
 import { PlatformError } from '../platforms/http';
-import type { FacebookCredentials, LineCredentials, PlatformClient } from '../platforms/types';
+import type { LineClient } from '../platforms/line';
+import type { FacebookCredentials, PlatformClient } from '../platforms/types';
 import { publishingAllowed } from '../writes';
 
 export type Clients = {
   facebook: PlatformClient<FacebookCredentials>;
   instagram: PlatformClient<FacebookCredentials>;
-  line: PlatformClient<LineCredentials>;
+  line: LineClient;
 };
 
 export type DispatchOptions = {
