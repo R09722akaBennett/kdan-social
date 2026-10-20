@@ -1,7 +1,7 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
-import { useActionState, useMemo, useState, type CSSProperties } from 'react';
+import { useActionState, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { clockInZone, dayInZone, zonedTimeToUtc } from '@kdan-social/core/time';
 import { Icon, Pf, PLATFORM, zoneName, type Platform } from '@/components/ui';
 import { createImageUpload, submitPost, type SubmitState } from '../actions';
@@ -42,25 +42,48 @@ async function toJpeg(file: File, maxWidth = MAX_WIDTH, quality = 0.9): Promise<
 
 const todayIn = (tz: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage }: {
-  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[];
+/** An existing post being changed: its accounts are fixed, everything else starts from what it has. */
+export type EditPost = {
+  postId: string;
+  accountIds: string[];
+  main: string;
+  custom: Record<string, string>;
+  media: Array<{ url: string; previewUrl?: string; alt?: string }>;
+  /** Review comments, newest last, shown above the editor as Later shows a post's activity. */
+  notes: Array<{ author: string; body: string; at: string }>;
+  /** The current times, in words, for the "keep" option. */
+  when: string;
+};
+
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit }: {
+  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost;
 }) {
-  const [on, setOn] = useState<Record<string, boolean>>({});
-  const [main, setMain] = useState('');
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((edit?.accountIds ?? []).map((id) => [id, true])));
+  const [main, setMain] = useState(edit?.main ?? '');
   // Text customised for one account; an account without an entry uses the main text.
-  const [custom, setCustom] = useState<Record<string, string>>({});
-  const [customizing, setCustomizing] = useState(false);
+  const [custom, setCustom] = useState<Record<string, string>>(edit?.custom ?? {});
+  const [customizing, setCustomizing] = useState(Object.keys(edit?.custom ?? {}).length > 0);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [media, setMedia] = useState<Media[]>([]);
+  const [media, setMedia] = useState<Media[]>(() => (edit?.media ?? []).map((m, i) => ({ url: m.url, previewUrl: m.previewUrl ?? m.url, alt: m.alt ?? '', ratio: 1, name: `圖片 ${i + 1}` })));
+  // Stored media keep no dimensions; measure them so the Instagram ratio check is real.
+  useEffect(() => {
+    for (const m of edit?.media ?? []) {
+      const img = new Image();
+      img.onload = () => setMedia((all) => all.map((x) => (x.url === m.url ? { ...x, ratio: img.naturalWidth / img.naturalHeight } : x)));
+      img.src = m.previewUrl ?? m.url;
+    }
+  }, [edit]);
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const viewerTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
-  const [mode, setMode] = useState<'now' | 'local' | 'same'>('local');
+  const [mode, setMode] = useState<'keep' | 'now' | 'local' | 'same'>(edit ? 'keep' : 'local');
   const [date, setDate] = useState(() => todayIn(viewerTz));
   const [time, setTime] = useState('20:00');
   const [state, action, pending] = useActionState<SubmitState, FormData>(submitPost, {});
 
-  const chosen = accounts.filter((a) => on[a.id]);
+  // An edited post keeps its accounts, so only those are offered.
+  const offered = edit ? accounts.filter((a) => edit.accountIds.includes(a.id)) : accounts;
+  const chosen = offered.filter((a) => on[a.id]);
   // Same rule as createPost on the server, so the preview shows exactly what is sent.
   const textFor = (id: string) => (custom[id] ?? main).trim();
   const groupState = (g: Group) => {
@@ -132,17 +155,19 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   }
 
   const payload = JSON.stringify({
+    ...(edit ? { postId: edit.postId } : {}),
     body: main,
     perAccount: Object.fromEntries(chosen.filter((a) => custom[a.id] !== undefined).map((a) => [a.id, custom[a.id]])),
     accountIds: chosen.map((a) => a.id),
     media: media.map(({ url, previewUrl, alt }) => ({ url, previewUrl, ...(alt ? { alt } : {}) })),
-    schedule: mode === 'now' ? { mode } : { mode, date, time },
+    schedule: mode === 'now' || mode === 'keep' ? { mode } : { mode, date, time },
     viewerTimeZone: viewerTz,
   });
 
   /** When an account's post goes out, on its own clock, e.g. "10/20 20:00". */
   const whenFor = (a: Account) => {
     if (mode === 'now') return '剛剛';
+    if (mode === 'keep') return '原排定時間';
     try {
       const at = zonedTimeToUtc(date, time, mode === 'local' ? a.timeZone : viewerTz);
       return `${dayInZone(at, a.timeZone)} ${clockInZone(at, a.timeZone)}`;
@@ -153,7 +178,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const pvAcc = chosen.find((a) => a.id === previewId) ?? chosen[0];
   const pvText = pvAcc ? textFor(pvAcc.id) : '';
   const md = date.slice(5).replace('-', '/');
-  const scheduleText = mode === 'now' ? '送出後一分鐘內發布'
+  const scheduleText = mode === 'keep' ? `維持原時間：${edit?.when ?? ''}` : mode === 'now' ? '送出後一分鐘內發布'
     : mode === 'local' ? `${md} ${time}，各帳號自己的時間${zones.length ? `（${zones.map(zoneName).join('、')}）` : ''}`
     : `${zoneName(viewerTz)} ${md} ${time}${zones.filter((z) => z !== viewerTz).length ? ` ＝ ${chosen.filter((a, i) => a.timeZone !== viewerTz && chosen.findIndex((b) => b.timeZone === a.timeZone) === i).map((a) => `${zoneName(a.timeZone)} ${whenFor(a)}`).join(' · ')}` : ''}`;
   const reviewed = role !== 'owner' && role !== 'admin';
@@ -164,20 +189,32 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
       <input type="hidden" name="payload" value={payload} />
       <header className="row" style={{ padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', gap: 12 }}>
         <a href="/app" className="btn icon-btn" aria-label="返回總覽" style={{ border: 0 }}><Icon name="chevronLeft" size={20} stroke={2} /></a>
-        <h1 style={{ fontSize: 18 }}>新增貼文</h1>
-        <span className="chip chip-neutral">草稿</span>
+        <h1 style={{ fontSize: 18 }}>{edit ? '修改貼文' : '新增貼文'}</h1>
+        <span className="chip chip-neutral">{edit ? '修改中' : '草稿'}</span>
         <span className="spacer small muted">{workspace}</span>
       </header>
 
       <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap' }}>
         <section aria-label="編輯內容" style={{ flex: '999 1 600px', minWidth: 0, padding: '24px 28px 32px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {edit && edit.notes.length > 0 && (
+            <div className="card card-pad stack" style={{ gap: 8, borderColor: 'var(--err-line)', background: '#FFFAF9' }}>
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span style={{ fontWeight: 600 }}>審核意見</span>
+                <a className="small" href={`/app/approvals?post=${edit.postId}`}>看完整紀錄</a>
+              </div>
+              {edit.notes.map((n, i) => (
+                <div key={i} className="small"><strong style={{ fontWeight: 600 }}>{n.author}</strong> <span className="muted">{n.at}</span><div style={{ whiteSpace: 'pre-line' }}>{n.body}</div></div>
+              ))}
+            </div>
+          )}
           <div className="card card-pad stack" style={{ gap: 12 }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span style={{ fontWeight: 600 }}>發到哪些帳號</span>
               <span className="small muted">已選 {chosen.length} 個帳號</span>
             </div>
             {accounts.length === 0 && <p className="small muted" style={{ margin: 0 }}>還沒有連結帳號，請先到 <a href="/app/channels">帳號與群組</a> 連結。</p>}
-            {accounts.length > 0 && (
+            {edit && <p className="tiny muted" style={{ margin: 0 }}>修改時不能換帳號；要發到別的帳號，請另外新增貼文。</p>}
+            {!edit && accounts.length > 0 && (
               <div className="row" style={{ gap: 6 }} aria-label="用群組快速選取">
                 {usedGroups.length > 0 && <span className="tiny muted" style={{ marginRight: 2 }}>群組</span>}
                 {usedGroups.map((g) => {
@@ -188,11 +225,11 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
               </div>
             )}
             <div className="row" style={{ gap: 8 }}>
-              {accounts.map((a) => {
+              {offered.map((a) => {
                 const bad = a.status !== 'active';
                 const sel = !!on[a.id];
                 return (
-                  <button key={a.id} type="button" aria-pressed={sel} title={a.name} onClick={() => setOn((o) => ({ ...o, [a.id]: !o[a.id] }))}
+                  <button key={a.id} type="button" aria-pressed={sel} title={a.name} disabled={!!edit} onClick={() => setOn((o) => ({ ...o, [a.id]: !o[a.id] }))}
                     className="row" style={{ gap: 6, minHeight: 40, padding: '0 10px 0 6px', borderRadius: 20, flexWrap: 'nowrap', border: `1px solid ${sel ? (bad ? '#E9A39C' : 'var(--accent)') : 'var(--line)'}`, background: sel ? (bad ? '#FFFAF9' : '#F7F9FF') : '#fff', opacity: sel ? 1 : 0.55 }}>
                     <Pf pf={a.platform} bad={bad} />
                     <span className="small">{a.name}</span>
@@ -352,11 +389,11 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
 
       <footer className="row compose-footer" style={{ padding: '12px 24px', background: 'var(--surface)', borderTop: '1px solid var(--line)', gap: '10px 14px', position: 'sticky', bottom: 0 }}>
         <div className="seg" role="radiogroup" aria-label="發布時間的基準">
-          {([['now', '馬上發'], ['local', '依各帳號時區'], ['same', '同一時刻']] as const).map(([k, l]) => (
+          {([...(edit ? [['keep', '維持原時間']] as const : []), ['now', '馬上發'], ['local', '依各帳號時區'], ['same', '同一時刻']] as const).map(([k, l]) => (
             <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => setMode(k)}>{l}</button>
           ))}
         </div>
-        {mode !== 'now' && (
+        {mode !== 'now' && mode !== 'keep' && (
           <>
             <label className="sr-only" htmlFor="date">日期</label>
             <input id="date" type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} style={{ minHeight: 36 }} />
@@ -369,7 +406,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
           {(state.error || blocking > 0) && <span className="tiny" style={{ color: 'var(--err)' }}>{state.error ?? `還有 ${blocking} 項要處理才能送出`}</span>}
           {!state.error && !blocking && <span className="tiny muted">{reviewed ? '送出後由擁有者或管理員核准' : '你送出的貼文會直接排程'}</span>}
           <button type="submit" className="btn btn-primary" disabled={pending || uploading > 0 || blocking > 0 || chosen.length === 0}>
-            {pending ? '送出中…' : reviewed ? `送出審核（${chosen.length} 個帳號）` : `排程到 ${chosen.length} 個帳號`}
+            {pending ? '送出中…' : edit ? (reviewed ? '重新送審' : '儲存變更') : reviewed ? `送出審核（${chosen.length} 個帳號）` : `排程到 ${chosen.length} 個帳號`}
           </button>
         </div>
       </footer>

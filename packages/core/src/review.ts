@@ -97,7 +97,7 @@ export async function reviewDetail(db: Db, a: { workspaceId: string; postId: str
       .orderBy(asc(publishTasks.runAt), asc(connectedAccounts.name)),
     db.select().from(postComments).where(eq(postComments.postId, post.id)).orderBy(asc(postComments.createdAt)),
     db.select({ actor: auditLog.actor, action: auditLog.action, at: auditLog.at }).from(auditLog)
-      .where(and(eq(auditLog.workspaceId, a.workspaceId), eq(auditLog.target, post.id), inArray(auditLog.action, ['post.created', 'post.approved', 'post.changes_requested'])))
+      .where(and(eq(auditLog.workspaceId, a.workspaceId), eq(auditLog.target, post.id), inArray(auditLog.action, ['post.created', 'post.edited', 'post.approved', 'post.changes_requested'])))
       .orderBy(asc(auditLog.at)),
   ]);
   return {

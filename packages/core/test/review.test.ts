@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { accountContext, encrypt } from '../src/crypto';
 import { auditLog, connectedAccounts, postVariants, publishTasks } from '../src/db/index';
-import { createPost } from '../src/posts';
+import { createPost, updatePost } from '../src/posts';
 import { dispatchDue } from '../src/publish/dispatch';
 import { createClients } from '../src/index';
 import { commentOnPost, decidePost, reviewDetail, ReviewError, reviewQueue } from '../src/review';
@@ -114,5 +114,43 @@ describe('commentOnPost', () => {
     const d = (await reviewDetail(db, { workspaceId: ws.id, postId }))!;
     expect(d.comments.map((c) => [c.author, c.body])).toEqual([['editor@example.com', '改好了，請再看一次']]);
     expect(d.state).toBe('pending');
+  });
+});
+
+describe('updatePost', () => {
+  const edit = (db: Awaited<ReturnType<typeof setup>>['db'], wsId: string, postId: string, patch: Partial<Parameters<typeof updatePost>[1]> = {}) =>
+    updatePost(db, { workspaceId: wsId, postId, actor: 'editor@example.com', role: 'editor', body: '雙十一預告（修正版）', media: [], schedule: { mode: 'keep' }, now: NOW, ...patch });
+
+  it('lets the author fix a returned post, which goes back to review with its times kept', async () => {
+    const { db, ws, us, post } = await setup();
+    const { postId } = await post('editor');
+    const before = (await db.select().from(publishTasks)).map((t) => t.runAt.toISOString()).sort();
+    await decidePost(db, { workspaceId: ws.id, postId, decision: 'request_changes', comment: '標題要加「修正版」', ...by() });
+    await edit(db, ws.id, postId, { perAccount: { [us]: 'US fixed' } });
+    const d = (await reviewDetail(db, { workspaceId: ws.id, postId }))!;
+    expect(d.state).toBe('pending');
+    expect(d.post.title).toBe('雙十一預告（修正版）');
+    expect(d.versions.map((v) => [v.name, v.body, v.customised])).toEqual(expect.arrayContaining([['tw-page', '雙十一預告（修正版）', false], ['us-page', 'US fixed', true]]));
+    expect((await db.select().from(publishTasks)).map((t) => t.runAt.toISOString()).sort()).toEqual(before);
+    expect(d.history.map((h) => h.action)).toEqual(['post.created', 'post.changes_requested', 'post.edited']);
+  });
+
+  it('approves an owner’s edit and moves the times when a new schedule is given', async () => {
+    const { db, ws, post } = await setup();
+    const { postId } = await post('editor');
+    await edit(db, ws.id, postId, { actor: owner.email, role: 'owner', schedule: { mode: 'same', date: '2026-10-25', time: '09:00' }, viewerTimeZone: 'Asia/Taipei' });
+    expect(new Set((await db.select().from(postVariants)).map((v) => v.reviewStatus))).toEqual(new Set(['approved']));
+    expect(new Set((await db.select().from(publishTasks)).map((t) => t.runAt.toISOString()))).toEqual(new Set(['2026-10-25T01:00:00.000Z']));
+  });
+
+  it('refuses other editors, posts already partly sent, and content that breaks the rules', async () => {
+    const { db, ws, tw, post } = await setup();
+    const { postId } = await post('editor');
+    await expect(edit(db, ws.id, postId, { actor: 'someone@example.com' })).rejects.toThrow(/只有作者/);
+    await expect(edit(db, ws.id, postId, { body: '  ', perAccount: {} })).rejects.toThrow(/要有文字或圖片/);
+    await expect(edit(db, ws.id, postId, { schedule: { mode: 'local', date: '2026-10-01', time: '09:00' } })).rejects.toThrow(/已經過了/);
+    await db.update(publishTasks).set({ status: 'published' }).where(eq(publishTasks.accountId, tw));
+    await expect(edit(db, ws.id, postId)).rejects.toThrow(/已經有帳號發出/);
+    expect((await reviewDetail(db, { workspaceId: ws.id, postId }))!.post.body).toBe('雙十一預告');
   });
 });

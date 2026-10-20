@@ -7,10 +7,10 @@ import { reviewAction } from '@/app/app/actions';
 
 // One decision per post, as Assembly's approvals inbox and Later's "Request Changes" card.
 const DEC: Record<ReviewState, ['ok' | 'warn' | 'err', string]> = { approved: ['ok', '已核准'], pending: ['warn', '待審核'], changes_requested: ['err', '要求修改'] };
-const ACTION: Record<string, string> = { 'post.created': '送出審核', 'post.approved': '核准', 'post.changes_requested': '要求修改' };
+const ACTION: Record<string, string> = { 'post.created': '送出審核', 'post.edited': '修改了貼文', 'post.approved': '核准', 'post.changes_requested': '要求修改' };
 
 export default async function Approvals({ searchParams }: { searchParams: Promise<{ post?: string; notice?: string; error?: string }> }) {
-  const { workspace, role } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
   const sp = await searchParams;
   const db = getDb();
   const tz = workspace.timeZone;
@@ -122,8 +122,12 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
                 <span className="small" style={{ flex: '1 1 240px', color: 'var(--ink-2)' }}>
                   {!d.open ? '排定時間都已經過了，不能再改變審核結果。'
                     : d.state === 'approved' ? '已核准，貼文會在排定的時間發出。'
+                    : d.state === 'changes_requested' && !reviewer ? '請依留言修改貼文，存檔後會重新送審。'
                     : reviewer ? `核准後 ${d.versions.length} 個帳號會依各自的排定時間發布。` : '等擁有者或管理員核准。'}
                 </span>
+                {d.open && d.versions.every((v) => v.taskStatus === 'scheduled') && (reviewer || d.post.createdBy === user.email) && (
+                  <a className={d.state === 'changes_requested' && !reviewer ? 'btn btn-primary' : 'btn'} href={`/app/posts/${d.post.id}/edit`}>修改貼文</a>
+                )}
                 <button type="submit" name="intent" value="comment" className="btn">只留言</button>
                 {reviewer && d.open && <button type="submit" name="intent" value="request_changes" className="btn">要求修改</button>}
                 {reviewer && d.open && <button type="submit" name="intent" value="approve" className="btn btn-ok" disabled={d.state === 'approved'}>{d.state === 'approved' ? '已核准' : '核准'}</button>}
