@@ -30,7 +30,7 @@
 - [ ] 發文：FB 粉專（文字、圖片）→ IG（圖片、輪播）
 - [ ] 每日粉絲數快照
 - [ ] 登入與工作區、市場設定
-- [ ] 部署到 Vercel staging
+- [x] 部署到 Vercel（https://kdan-social.vercel.app，Supabase Cron 每分鐘觸發派送）
 - [ ] 錄 App Review 操作影片並送審
 
 ## 階段 2 — KDAN 三市場全面使用（第 4–7 週）
@@ -47,6 +47,7 @@
 - [ ] Meta 商業驗證（用 KDAN 公司實體）
 - [ ] App Review：各權限 Advanced Access、操作錄影、隱私權政策、資料刪除說明
 - [ ] App 切換為 Live。審核通過前，Bandai 要授權的人須先被加為 app 測試者
+- [ ] 重設 Supabase 資料庫密碼（目前這組曾在對話中外洩），並同步更新 Vercel 的 `DATABASE_URL`
 
 ## 待確認
 
