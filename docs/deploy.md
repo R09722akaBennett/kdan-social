@@ -42,10 +42,24 @@
    | `PUBLISHING_ENABLED` | `0`。確認流程都沒問題後才改成 `1` |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://<project-ref>.supabase.co`（公開值） |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase 的 publishable key（公開值，靠 RLS 保護資料） |
+   | `SUPABASE_SECRET_KEY` | Supabase 的 secret key，只用來簽圖片上傳網址；會繞過 RLS，只能放在伺服器端 |
    | `META_APP_ID` | Meta app 的 App ID |
    | `META_APP_SECRET` | Meta app 的 App Secret |
 
 3. Function 區域設成和 Supabase 同區（目前是 `sin1`）。
+
+## 圖片儲存
+
+Supabase Storage 的 `media` bucket：公開讀取（Instagram 從公開網址抓圖），單檔上限 8 MB，
+只收 `image/jpeg`（Instagram 只接受 JPEG，瀏覽器上傳前會先轉檔）。
+
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('media', 'media', true, 8388608, array['image/jpeg']);
+```
+
+上傳流程：伺服器用 secret key 簽一次性的上傳網址（路徑 `<workspace id>/<uuid>.jpg`），瀏覽器直接
+傳到 Storage，不經過 Vercel（函式有請求大小上限）。沒有簽名的上傳、重用過的網址、非 JPEG 都會被拒絕。
 
 ## 登入與 Meta 授權
 
