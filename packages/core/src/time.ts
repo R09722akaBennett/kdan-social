@@ -33,7 +33,32 @@ export function zonedTimeToUtc(date: string, time: string, timeZone: string): Da
   return new Date(Math.max(first, second));
 }
 
-/** Format an instant as the wall clock in `timeZone`, e.g. "10/20 20:00". */
+function wallParts(at: Date, timeZone: string) {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+}
+
+/** The wall-clock date in `timeZone`, e.g. "10/20". */
+export function dayInZone(at: Date, timeZone: string): string {
+  const p = wallParts(at, timeZone);
+  return `${p.month}/${p.day}`;
+}
+
+/** The wall-clock time in `timeZone`, e.g. "20:00". */
+export function clockInZone(at: Date, timeZone: string): string {
+  const p = wallParts(at, timeZone);
+  return `${p.hour}:${p.minute}`;
+}
+
+/**
+ * Format an instant as the wall clock in `timeZone`, e.g. "10/20 20:00".
+ *
+ * Built from parts rather than a locale format: ICU separates date and time in zh-TW
+ * with U+2009 (thin space), which broke every caller that split on a plain space.
+ */
 export function formatInZone(at: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat('zh-TW', { timeZone, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
+  return `${dayInZone(at, timeZone)} ${clockInZone(at, timeZone)}`;
 }

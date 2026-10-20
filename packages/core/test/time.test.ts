@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { zonedTimeToUtc } from '../src/time';
+import { clockInZone, dayInZone, formatInZone, zonedTimeToUtc } from '../src/time';
 
 describe('zonedTimeToUtc', () => {
   it('converts fixed-offset zones', () => {
@@ -25,5 +25,14 @@ describe('zonedTimeToUtc', () => {
     expect(() => zonedTimeToUtc('2026/10/20', '20:00', 'Asia/Taipei')).toThrow(RangeError);
     expect(() => zonedTimeToUtc('2026-10-20', '8pm', 'Asia/Taipei')).toThrow(RangeError);
     expect(() => zonedTimeToUtc('2026-10-20', '20:00', 'Mars/Olympus')).toThrow(RangeError);
+  });
+});
+
+describe('formatInZone', () => {
+  it('separates date and time with a plain space and pads the clock', () => {
+    const at = new Date('2026-10-19T16:05:00Z');
+    expect(formatInZone(at, 'Asia/Taipei')).toBe('10/20 00:05');
+    expect(dayInZone(at, 'Asia/Taipei')).toBe('10/20');
+    expect(clockInZone(at, 'America/New_York')).toBe('12:05');
   });
 });
