@@ -24,13 +24,14 @@
 - [x] 建立 Meta app（用途：Manage everything on your Page、Manage messaging & content on Instagram），App ID `1582239959893232`
 - [x] 驗證發文：用測試粉專 Datalemak 經由正式排程實際發出一則文字貼文（2026-10-20）
 - [x] 正式 OAuth 流程（不要寫死 token；這段畫面之後就是 App Review 的錄影素材）
-- [x] 資料模型：工作區 → 市場 → 已連結帳號 → 貼文 → 市場 × 平台版本 → 發文任務
+- [x] 資料模型：工作區 → 帳號群組（客戶自己命名，選填）→ 已連結帳號（各自有時區）→ 貼文 → 每個帳號一個版本 → 發文任務
 - [x] Token 加密存放於後端
 - [x] Token 失效偵測（發文與每日快照時）與重新連結（重新授權即更新 token）
-- [ ] 發文編輯器：FB 粉專（文字、圖片）→ IG（圖片、輪播）、圖片上傳、各市場當地時間排程
+- [ ] 發文編輯器：FB 粉專（文字、圖片）→ IG（圖片、輪播）、圖片上傳、依各帳號時區排程
 - [ ] 每日粉絲數快照
 - [x] 登入（Email 連結）與工作區；新工作區目前用 `workspace:bootstrap` 腳本建立
-- [ ] 市場設定、成員邀請的畫面
+- [x] 帳號群組與帳號時區的設定畫面
+- [ ] 成員邀請的畫面
 - [x] 部署到 Vercel（https://kdan-social.vercel.app，Supabase Cron 每分鐘觸發派送）
 - [ ] 錄 App Review 操作影片並送審
 
