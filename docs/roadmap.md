@@ -9,10 +9,11 @@
 | 項目 | 決定 |
 |---|---|
 | 開發 | Bennett ＋ Claude |
-| 部署 | 先用 Vercel（Pro 方案，Hobby 不能商用、Cron 只能每天一次）；核心邏輯不綁 Vercel，之後可搬 GCP |
+| 部署 | 開發與 KDAN 內部試用用 Vercel Hobby ＋ Supabase（東京）；**Bandai 正式使用前升級 Vercel Pro**（Hobby 只限非商業用途）。核心邏輯不綁 Vercel，之後可搬 GCP。步驟見 [deploy.md](deploy.md) |
+| 資料庫 | Supabase Postgres；app 走 transaction pooler，migration 走 session／direct 連線 |
 | 程式碼 | GitHub 私人 repo `R09722akaBennett/kdan-social` |
 | 技術棧 | TypeScript；Next.js（`apps/web`）＋框架無關的核心套件（`packages/core`）；PostgreSQL；Drizzle |
-| 排程 | 每分鐘一次的 Cron 從資料庫撈到期任務發送，資料庫是唯一的事實來源。FB 也走自己的排程，不用 `scheduled_publish_time`，三個平台的失敗處理與 dry-run 才能一致 |
+| 排程 | Supabase Cron 每分鐘呼叫派送端點（Hobby 的 Vercel Cron 一天只能一次），從資料庫撈到期任務發送，資料庫是唯一的事實來源。FB 也走自己的排程，不用 `scheduled_publish_time`，三個平台的失敗處理與 dry-run 才能一致 |
 | 對外寫入 | 全站總開關＋每個工作區開關，**預設關閉**；關閉時只記錄 `[dry-run]`，不呼叫平台 |
 | 網域 | 先用 `*.vercel.app`，送 App Review 前換成公司網域 |
 
