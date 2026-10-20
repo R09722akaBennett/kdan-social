@@ -123,7 +123,7 @@ export default async function Channels({ searchParams }: { searchParams: Promise
           <div className="card card-pad stack" style={{ gap: 10 }}>
             <div style={{ fontWeight: 600 }}>Facebook 粉專＋Instagram</div>
             <div className="small" style={{ color: 'var(--ink-2)' }}>用 Facebook 登入一次，勾選要加入的粉專；粉專綁定的 IG 商業帳號會跟著加入。</div>
-            <a className="btn" href="/api/meta/connect" style={{ background: 'var(--fb)', borderColor: 'var(--fb)', color: '#fff', fontWeight: 600, minHeight: 44 }}>用 Facebook 繼續</a>
+            <a className="btn" href="/app/connect/facebook" style={{ background: 'var(--fb)', borderColor: 'var(--fb)', color: '#fff', fontWeight: 600, minHeight: 44 }}>連結 Facebook</a>
           </div>
           <div className="card card-pad stack" style={{ gap: 10 }}>
             <div style={{ fontWeight: 600 }}>LINE 官方帳號</div>
