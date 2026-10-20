@@ -128,3 +128,39 @@ describe('collectInsights', () => {
     expect((await db.select().from(connectedAccounts))[0]!.status).toBe('active');
   });
 });
+
+describe('analytics queries over collected insights', () => {
+  it('sums the period and the one before it, per day and per account, within the group filter', async () => {
+    const { dailyTotals, audienceFor } = await import('../src/analytics');
+    const { saveGroup } = await import('../src/groups');
+    const db = await testDb();
+    const ws = await bootstrapWorkspace(db, { name: 'KDAN', owner: { userId: '00000000-0000-4000-8000-000000000001', email: 'o@example.com' } });
+    const add = async (externalId: string) => {
+      const ref = { workspaceId: ws.id, platform: 'instagram' as const, externalId };
+      const [a] = await db.insert(connectedAccounts).values({ ...ref, timeZone: 'Asia/Taipei', name: externalId, credentials: encrypt('{}', KEY, accountContext(ref)) }).returning();
+      return a!.id;
+    };
+    const [x, y] = [await add('x'), await add('y')];
+    const tw = await saveGroup(db, { workspaceId: ws.id, name: '台灣', accountIds: [x], actor: 'o', role: 'owner' });
+    await db.insert(accountDailyMetrics).values([
+      { accountId: x, day: '2026-10-12', metrics: { reach: 10, views: 20 } },
+      { accountId: x, day: '2026-10-18', metrics: { reach: 30, views: 50, follows: 2, unfollows: 1 } },
+      { accountId: x, day: '2026-10-19', metrics: { reach: 40, views: 60 } },
+      { accountId: y, day: '2026-10-19', metrics: { reach: 5, views: 5 } },
+    ]);
+    const from = new Date('2026-10-14T00:00:00Z');
+    const to = new Date('2026-10-21T00:00:00Z');
+    const all = await dailyTotals(db, { workspaceId: ws.id, from, to });
+    expect(all.current).toEqual({ reach: 75, views: 115, engagements: null, follows: 2, unfollows: 1 });
+    expect(all.previous).toMatchObject({ reach: 10, views: 20 });
+    expect(all.days.map((d) => [d.day, d.reach])).toEqual([['2026-10-18', 30], ['2026-10-19', 45]]);
+    expect(all.byAccount.get(y)).toMatchObject({ reach: 5 });
+    expect((await dailyTotals(db, { workspaceId: ws.id, from, to, groupIds: [tw] })).current.reach).toBe(70);
+
+    await db.insert(audienceBreakdowns).values([
+      { accountId: x, kind: 'city', unit: 'count', items: [{ key: 'Taipei', value: 9 }] },
+      { accountId: x, kind: 'age', unit: 'count', items: [{ key: '25-34', value: 5 }] },
+    ]);
+    expect((await audienceFor(db, { workspaceId: ws.id })).get(x)!.map((b) => b.kind)).toEqual(['age', 'city']);
+  });
+});
