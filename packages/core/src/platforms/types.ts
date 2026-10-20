@@ -23,6 +23,16 @@ export type PublishResult = { externalPostId: string };
  */
 export type PostMetrics = { engagements: number | null; opens?: number | null; detail: Record<string, number | null> };
 
+/** One day of account-level numbers, keyed by our metric names (reach, views, engagements, follows, unfollows, ...). */
+export type DailyMetrics = { day: string; metrics: Record<string, number | null> };
+/** One audience breakdown, largest first, as the platform reports it (counts or percentages). */
+export type Demographic = { kind: 'age' | 'gender' | 'country' | 'city' | 'area' | 'app' | 'tenure'; unit: 'count' | 'percent'; items: Array<{ key: string; value: number }> };
+/** One post's reach and views, plus whatever else the platform adds. */
+export type PostInsights = { reach: number | null; views: number | null; detail: Record<string, number | null> };
+/** A metric the platform would not give, so the collector can say why the page lacks it. */
+export type InsightIssue = { metric: string; message: string };
+export type WithIssues<T> = { value: T; issues: InsightIssue[] };
+
 /** A post found on the account itself, whoever published it, with its numbers at the time it was read. */
 export type AccountPost = { externalId: string; publishedAt: Date; text: string; permalink: string | null; mediaType: string | null; metrics: PostMetrics };
 
@@ -41,4 +51,10 @@ export interface PlatformClient<C = Credentials> {
   metrics(account: AccountRef<C>, externalPostId: string): Promise<PostMetrics>;
   /** Posts published on the account since `since`, newest first; absent where the platform has no such list. */
   recentPosts?(account: AccountRef<C>, since: Date): Promise<AccountPost[]>;
+  /** Account-level numbers for each day in [since, until). Metrics the platform refuses become issues, not errors. */
+  dailyInsights?(account: AccountRef<C>, since: Date, until: Date): Promise<WithIssues<DailyMetrics[]>>;
+  /** The latest audience breakdowns. Missing ones (too few followers, no permission) become issues. */
+  demographics?(account: AccountRef<C>, now: Date): Promise<WithIssues<Demographic[]>>;
+  /** One post's reach and views. Missing metrics become issues. */
+  postInsights?(account: AccountRef<C>, externalPostId: string): Promise<WithIssues<PostInsights>>;
 }

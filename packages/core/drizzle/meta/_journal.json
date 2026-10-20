@@ -71,6 +71,13 @@
       "when": 1792512264932,
       "tag": "0009_account_posts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792515758948,
+      "tag": "0010_insights",
+      "breakpoints": true
     }
   ]
 }

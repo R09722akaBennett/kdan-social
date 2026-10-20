@@ -1,5 +1,5 @@
 import { form, PlatformError, request, type FetchFn } from './http';
-import type { AccountRef, LineCredentials, PlatformClient, PostMetrics } from './types';
+import type { AccountRef, Demographic, LineCredentials, PlatformClient, PostMetrics } from './types';
 
 const API = 'https://api.line.me';
 
@@ -89,6 +89,17 @@ export function lineClient(fetchFn: FetchFn = fetch): LineClient {
     },
     async followers(account, now) {
       return (await audience(account, now))?.followers ?? null;
+    },
+    async demographics(account) {
+      const { body } = await request(fetchFn, 'line', `${API}/v2/bot/insight/demographic`, { method: 'GET', headers: await auth(account), idempotent: true });
+      const b = body as Record<string, unknown> & { available?: boolean };
+      // LINE answers `available: false` until the account has 20 friends.
+      if (!b.available) return { value: [], issues: [{ metric: 'demographic', message: 'LINE has no demographics for this account yet (fewer than 20 friends)' }] };
+      const pick = (field: string, key: string, kind: Demographic['kind']): Demographic => ({
+        kind, unit: 'percent',
+        items: ((b[field] as Array<Record<string, unknown>> | undefined) ?? []).map((r) => ({ key: String(r[key]), value: Number(r.percentage ?? 0) })).sort((x, y) => y.value - x.value),
+      });
+      return { value: [pick('genders', 'gender', 'gender'), pick('ages', 'age', 'age'), pick('areas', 'area', 'area'), pick('appTypes', 'appType', 'app'), pick('subscriptionPeriods', 'subscriptionPeriod', 'tenure')].filter((d) => d.items.length), issues: [] };
     },
     async metrics(account, requestId): Promise<PostMetrics> {
       // A broadcast repeated after a 409 kept our retry key, not LINE's request id, so it has no stats.

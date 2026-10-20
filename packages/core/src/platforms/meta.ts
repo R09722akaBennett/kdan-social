@@ -1,4 +1,5 @@
 import { classifyGraph, form, PlatformError, request, type FetchFn } from './http';
+import { facebookDaily, facebookDemographics, facebookPostInsights, instagramDaily, instagramDemographics, instagramPostInsights } from './meta-insights';
 import type { AccountPost, AccountRef, FacebookCredentials, PlatformClient, PostMetrics, PublishInput, PublishResult } from './types';
 
 // Pin the Graph version so a Meta release cannot change behaviour under us; bump deliberately.
@@ -35,6 +36,13 @@ function graph(fetchFn: FetchFn, platform: 'facebook' | 'instagram') {
       }
       return items;
     },
+    /** A GET with arbitrary query parameters, for the insights edges. */
+    query: async (path: string, token: string, params: Record<string, string | number>) =>
+      (await request(fetchFn, platform, `${GRAPH}/${path}?${form({ ...params, access_token: token })}`, {
+        method: 'GET',
+        idempotent: true,
+        classify: classifyGraph,
+      })).body as { data?: Array<Record<string, any>> },
     get: async (path: string, token: string, fields: string) =>
       (await request(fetchFn, platform, `${GRAPH}/${path}?${form({ fields, access_token: token })}`, {
         method: 'GET',
@@ -94,6 +102,9 @@ export function facebookClient(fetchFn: FetchFn = fetch): PlatformClient<Faceboo
         return { externalId: String(p.id), publishedAt: new Date(String(p.created_time)), text: String(p.message ?? ''), permalink: typeof p.permalink_url === 'string' ? p.permalink_url : null, mediaType: typeof p.status_type === 'string' ? p.status_type : null, metrics: { engagements: total(Object.values(detail)), detail } };
       });
     },
+    dailyInsights: (account, since, until) => facebookDaily((path, params) => g.query(path, account.credentials.pageAccessToken, params), account.externalId, since, until),
+    demographics: (account) => facebookDemographics((path, params) => g.query(path, account.credentials.pageAccessToken, params), account.externalId),
+    postInsights: (account, postId) => facebookPostInsights((path, params) => g.query(path, account.credentials.pageAccessToken, params), postId),
   };
 }
 
@@ -159,5 +170,8 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
         return { externalId: String(m.id), publishedAt: new Date(String(m.timestamp)), text: String(m.caption ?? ''), permalink: typeof m.permalink === 'string' ? m.permalink : null, mediaType: typeof m.media_type === 'string' ? m.media_type : null, metrics: { engagements: total(Object.values(detail)), detail } };
       });
     },
+    dailyInsights: (account, since, until) => instagramDaily((path, params) => g.query(path, account.credentials.pageAccessToken, params), account.externalId, since, until),
+    demographics: (account) => instagramDemographics((path, params) => g.query(path, account.credentials.pageAccessToken, params), account.externalId),
+    postInsights: (account, mediaId) => instagramPostInsights((path, params) => g.query(path, account.credentials.pageAccessToken, params), mediaId),
   };
 }

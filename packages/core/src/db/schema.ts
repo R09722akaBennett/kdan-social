@@ -245,6 +245,10 @@ export const postMetrics = pgTable('post_metrics', {
   engagements: integer('engagements'),
   opens: integer('opens'),
   detail: jsonb('detail').$type<Record<string, number | null>>().notNull().default({}),
+  // Reach and views need the insights scopes; null until they are granted and read.
+  reach: integer('reach'),
+  views: integer('views'),
+  insights: jsonb('insights').$type<Record<string, number | null>>().notNull().default({}),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -264,7 +268,35 @@ export const accountPosts = pgTable(
     mediaType: text('media_type'),
     engagements: integer('engagements'),
     detail: jsonb('detail').$type<Record<string, number | null>>().notNull().default({}),
+    reach: integer('reach'),
+    views: integer('views'),
+    insights: jsonb('insights').$type<Record<string, number | null>>().notNull().default({}),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('account_posts_account_external').on(t.accountId, t.externalId), index('account_posts_published').on(t.publishedAt)],
+);
+
+/** One day of an account's own numbers (reach, views, engagements, follows...), as the platform reports them. */
+export const accountDailyMetrics = pgTable(
+  'account_daily_metrics',
+  {
+    accountId: uuid('account_id').notNull().references(() => connectedAccounts.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    metrics: jsonb('metrics').$type<Record<string, number | null>>().notNull().default({}),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.day] })],
+);
+
+/** The latest audience breakdown of one kind (age, gender, country...) for an account. */
+export const audienceBreakdowns = pgTable(
+  'audience_breakdowns',
+  {
+    accountId: uuid('account_id').notNull().references(() => connectedAccounts.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    unit: text('unit').$type<'count' | 'percent'>().notNull(),
+    items: jsonb('items').$type<Array<{ key: string; value: number }>>().notNull().default([]),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.kind] })],
 );

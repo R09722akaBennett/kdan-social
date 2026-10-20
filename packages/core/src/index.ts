@@ -5,7 +5,7 @@ export * from './platforms/types';
 export { facebookClient, instagramClient, GRAPH_VERSION } from './platforms/meta';
 export { lineClient, lineInsightDay, type LineAudience, type LineBotInfo, type LineClient, type LineQuota } from './platforms/line';
 export { dispatchDue, MAX_ATTEMPTS, type Clients, type DispatchSummary } from './publish/dispatch';
-export { collectPostMetrics, IMPORT_WINDOW_DAYS, importAccountPosts, snapshotFollowers, type ImportSummary, type MetricsSummary, type SnapshotSummary } from './snapshot';
+export { collectInsights, collectPostMetrics, IMPORT_WINDOW_DAYS, importAccountPosts, snapshotFollowers, type ImportSummary, type InsightsSummary, type MetricsSummary, type SnapshotSummary } from './snapshot';
 
 import { facebookClient, instagramClient } from './platforms/meta';
 import { lineClient } from './platforms/line';
