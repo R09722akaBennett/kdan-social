@@ -59,6 +59,24 @@ export const workspaceMembers = pgTable(
 );
 
 /**
+ * Someone asked to join a workspace, by email. Signing in with that email accepts it;
+ * the sign-in link proves the address, so no separate token is needed.
+ */
+export const workspaceInvites = pgTable(
+  'workspace_invites',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    // Stored lower-case, as Supabase stores user emails.
+    email: text('email').notNull(),
+    role: memberRole('role').notNull().default('editor'),
+    invitedBy: text('invited_by').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('invites_workspace_email').on(t.workspaceId, t.email), index('invites_email').on(t.email)],
+);
+
+/**
  * Pages returned by one Facebook authorization, held until the user picks which to add.
  * The payload carries page tokens, so it is encrypted and expires after a few minutes.
  */

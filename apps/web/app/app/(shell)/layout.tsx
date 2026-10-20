@@ -22,6 +22,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     { href: '/app/analytics', label: '成效', icon: 'chart' },
     { href: '/app/channels', label: '帳號與群組', icon: 'link', badge: { n: expired.length, bg: 'var(--err-soft)', fg: 'var(--err)' } },
     { href: '/app/voice', label: '品牌語氣', icon: 'voice' },
+    { href: '/app/members', label: '成員', icon: 'users' },
   ];
 
   const sidebar = (

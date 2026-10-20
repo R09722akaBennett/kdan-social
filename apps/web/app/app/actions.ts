@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, lineClient, loadKey, mask, queueDryRunTest, ReviewError, saveGroup, setAccountTimeZone, setPublishing } from '@kdan-social/core';
+import { AccessError, changeRole, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, setAccountTimeZone, setPublishing } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
@@ -150,4 +150,43 @@ export async function reviewAction(formData: FormData) {
   }
   revalidatePath('/app', 'layout');
   back(`notice=${encodeURIComponent(notice)}`);
+}
+
+/** Run a member change and return to the members page, showing a refusal as the page's error. */
+async function memberChange(run: () => Promise<unknown>, notice: string) {
+  try {
+    await run();
+  } catch (e) {
+    if (e instanceof MemberError) redirect(`/app/members?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app/members');
+  redirect(`/app/members?notice=${encodeURIComponent(notice)}`);
+}
+
+export async function inviteAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  const email = String(formData.get('email') ?? '');
+  await memberChange(
+    () => inviteMember(getDb(), { workspaceId: workspace.id, email, role: String(formData.get('role')), actor: user.email, actorRole: role }),
+    `已邀請 ${email.trim().toLowerCase()}，請對方用這個 email 登入`,
+  );
+}
+
+export async function revokeInviteAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  await memberChange(() => revokeInvite(getDb(), { workspaceId: workspace.id, inviteId: String(formData.get('inviteId')), actor: user.email, actorRole: role }), '已撤回邀請');
+}
+
+export async function changeRoleAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  await memberChange(
+    () => changeRole(getDb(), { workspaceId: workspace.id, userId: String(formData.get('userId')), role: String(formData.get('role')), actor: user.email, actorId: user.id, actorRole: role }),
+    '已更新角色',
+  );
+}
+
+export async function removeMemberAction(formData: FormData) {
+  const { user, workspace, role } = await requireWorkspace();
+  await memberChange(() => removeMember(getDb(), { workspaceId: workspace.id, userId: String(formData.get('userId')), actor: user.email, actorId: user.id, actorRole: role }), '已移除成員');
 }
