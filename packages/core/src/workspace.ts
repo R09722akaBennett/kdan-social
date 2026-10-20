@@ -4,7 +4,6 @@ import { accountContext, decrypt, encrypt } from './crypto';
 import {
   auditLog,
   connectedAccounts,
-  markets,
   metaConnectSessions,
   postVariants,
   posts,
@@ -16,6 +15,8 @@ import {
 import { PlatformError } from './platforms/http';
 import type { LineAudience, LineClient, LineQuota } from './platforms/line';
 import type { MetaPage } from './platforms/meta-oauth';
+import { workspaceTimeZone } from './groups';
+import { assertTimeZone } from './time';
 import { publishingAllowed } from './writes';
 
 export class AccessError extends Error {}
@@ -36,16 +37,13 @@ export async function membershipFor(db: Db, userId: string) {
   return row ?? null;
 }
 
-export function listMarkets(db: Db, workspaceId: string) {
-  return db.select().from(markets).where(eq(markets.workspaceId, workspaceId)).orderBy(markets.createdAt);
-}
-
 /** Connected accounts without their credentials, which never leave the server. */
 export function listAccounts(db: Db, workspaceId: string) {
   return db
     .select({
       id: connectedAccounts.id,
-      marketId: connectedAccounts.marketId,
+      groupId: connectedAccounts.groupId,
+      timeZone: connectedAccounts.timeZone,
       platform: connectedAccounts.platform,
       externalId: connectedAccounts.externalId,
       name: connectedAccounts.name,
@@ -118,27 +116,27 @@ export async function pendingMetaConnect(db: Db, key: Buffer, a: { sessionId: st
   return pages?.map(({ token: _token, ...p }) => p) ?? null;
 }
 
-export type ConnectSelection = { pageId: string; marketId: string; instagram: boolean };
+export type ConnectSelection = { pageId: string; instagram: boolean };
 
 /**
  * Save the chosen pages, and their linked Instagram accounts when asked, as connected accounts.
  *
- * An account that was already connected gets the new token and becomes active again,
- * so this is also how an expired account is reconnected.
+ * New accounts start ungrouped on the workspace's clock. An account that was already
+ * connected gets the new token and becomes active again, keeping its group and time
+ * zone, so this is also how an expired account is reconnected.
  *
  * Raises:
- *   AccessError: the session is gone or not this user's, or a market is not in the workspace.
+ *   AccessError: the session is gone or not this user's.
  */
 export async function completeMetaConnect(db: Db, key: Buffer, a: { sessionId: string; workspaceId: string; userId: string; actor: string; selections: ConnectSelection[]; now?: Date }) {
   const pages = await loadSession(db, key, a);
   if (!pages) throw new AccessError('This authorization has expired; connect again');
-  const marketIds = new Set((await listMarkets(db, a.workspaceId)).map((m) => m.id));
+  const timeZone = await workspaceTimeZone(db, a.workspaceId);
 
   let connected = 0;
   for (const sel of a.selections) {
     const page = pages.find((p) => p.id === sel.pageId);
     if (!page) continue;
-    if (!marketIds.has(sel.marketId)) throw new AccessError('Unknown market');
     const targets: Array<{ platform: 'facebook' | 'instagram'; externalId: string; name: string }> = [{ platform: 'facebook', externalId: page.id, name: page.name }];
     if (sel.instagram && page.instagram) targets.push({ platform: 'instagram' as const, externalId: page.instagram.id, name: `@${page.instagram.username}` });
     for (const t of targets) {
@@ -146,10 +144,10 @@ export async function completeMetaConnect(db: Db, key: Buffer, a: { sessionId: s
       const credentials = encrypt(JSON.stringify({ pageAccessToken: page.token }), key, accountContext(ref));
       await db
         .insert(connectedAccounts)
-        .values({ ...ref, marketId: sel.marketId, name: t.name, credentials })
+        .values({ ...ref, timeZone, name: t.name, credentials })
         .onConflictDoUpdate({
           target: [connectedAccounts.workspaceId, connectedAccounts.platform, connectedAccounts.externalId],
-          set: { marketId: sel.marketId, name: t.name, credentials, status: 'active', statusDetail: null },
+          set: { name: t.name, credentials, status: 'active', statusDetail: null },
         });
       await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'account.connected', target: t.externalId, detail: { platform: t.platform, name: t.name } });
       connected++;
@@ -178,7 +176,7 @@ export async function queueDryRunTest(db: Db, a: { workspaceId: string; accountI
   const [post] = await db.insert(posts).values({ workspaceId: a.workspaceId, title: '測試貼文（dry-run）' }).returning();
   const [variant] = await db.insert(postVariants).values({
     postId: post!.id,
-    marketId: row.account.marketId,
+    accountId: row.account.id,
     platform: row.account.platform,
     body: 'kdan-social 測試貼文：只會記錄為 dry-run，不會真的發出。',
     reviewStatus: 'approved',
@@ -188,11 +186,11 @@ export async function queueDryRunTest(db: Db, a: { workspaceId: string; accountI
   return task!.id;
 }
 
-/** Create a workspace with its markets and first owner. Used once per customer. */
-export async function bootstrapWorkspace(db: Db, a: { name: string; owner: { userId: string; email: string }; markets: Array<{ code: string; name: string; locale: string; timeZone: string }> }) {
+/** Create a workspace with its first owner. Used once per customer; groups come later, from the customer. */
+export async function bootstrapWorkspace(db: Db, a: { name: string; owner: { userId: string; email: string }; timeZone?: string }) {
+  if (a.timeZone) assertTimeZone(a.timeZone);
   return db.transaction(async (tx) => {
-    const [ws] = await tx.insert(workspaces).values({ name: a.name }).returning();
-    await tx.insert(markets).values(a.markets.map((m) => ({ ...m, workspaceId: ws!.id })));
+    const [ws] = await tx.insert(workspaces).values({ name: a.name, timeZone: a.timeZone }).returning();
     await tx.insert(workspaceMembers).values({ workspaceId: ws!.id, userId: a.owner.userId, email: a.owner.email, role: 'owner' });
     await tx.insert(auditLog).values({ workspaceId: ws!.id, actor: a.owner.email, action: 'workspace.created', target: ws!.id });
     return ws!;
@@ -208,9 +206,9 @@ export async function bootstrapWorkspace(db: Db, a: { name: string; owner: { use
  * channel again replaces its secret and reactivates it.
  *
  * Raises:
- *   ConnectError: the market is not in the workspace, LINE rejects the credentials, or LINE is unreachable.
+ *   ConnectError: LINE rejects the credentials, or LINE is unreachable.
  */
-export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { workspaceId: string; marketId: string; channelId: string; channelSecret: string; actor: string }) {
+export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { workspaceId: string; channelId: string; channelSecret: string; actor: string }) {
   const channelId = a.channelId.trim();
   const channelSecret = a.channelSecret.trim();
   if (!/^\d+$/.test(channelId)) throw new ConnectError('Channel ID 應該是一串數字，在 LINE Developers 的 Basic settings 分頁。');
@@ -220,7 +218,6 @@ export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { wo
   if (!/^[0-9a-f]{32}$/i.test(channelSecret)) {
     throw new ConnectError(`Channel secret 應該是 32 個英數字元（在 Basic settings 分頁），你貼的有 ${channelSecret.length} 個字元。${channelSecret.length > 32 ? '很長的話，可能是貼成了 Messaging API 分頁的 Channel access token。' : ''}`);
   }
-  if (!(await listMarkets(db, a.workspaceId)).some((m) => m.id === a.marketId)) throw new ConnectError('找不到這個市場，請重新整理後再試。');
 
   let info;
   try {
@@ -238,10 +235,10 @@ export async function connectLine(db: Db, key: Buffer, line: LineClient, a: { wo
   const credentials = encrypt(JSON.stringify({ channelId, channelSecret }), key, accountContext(ref));
   await db
     .insert(connectedAccounts)
-    .values({ ...ref, marketId: a.marketId, name, credentials })
+    .values({ ...ref, timeZone: await workspaceTimeZone(db, a.workspaceId), name, credentials })
     .onConflictDoUpdate({
       target: [connectedAccounts.workspaceId, connectedAccounts.platform, connectedAccounts.externalId],
-      set: { marketId: a.marketId, name, credentials, status: 'active', statusDetail: null },
+      set: { name, credentials, status: 'active', statusDetail: null },
     });
   await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'account.connected', target: channelId, detail: { platform: 'line', name } });
   return { name };

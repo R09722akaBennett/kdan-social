@@ -2,17 +2,17 @@ import {
   clockInZone,
   dayInZone,
   followerStats,
-  formatInZone,
   globalPublishingEnabled,
   listAccounts,
-  listMarkets,
+  listGroups,
   overviewCounts,
   publishingAllowed,
   upcomingTasks,
   type ScheduledTask,
 } from '@kdan-social/core';
 import type { CSSProperties } from 'react';
-import { Chip, Icon, localTime, Mk, Pf, SegLinks, fmtN } from '@/components/ui';
+import { FilterMenu } from '@/components/groups';
+import { Chip, Icon, localTime, Pf, PLATFORM, fmtN, zoneName } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { signOut, togglePublishing } from '@/app/app/actions';
@@ -45,9 +45,11 @@ function taskChip(t: ScheduledTask): ['plan' | 'warn' | 'err', string] {
   return ['plan', '已排程'];
 }
 
-export default async function Overview({ searchParams }: { searchParams: Promise<{ market?: string; notice?: string; n?: string }> }) {
+export default async function Overview({ searchParams }: { searchParams: Promise<{ group?: string | string[]; notice?: string; n?: string }> }) {
   const { user, membership } = await currentMember();
-  const { market: marketCode, notice, n } = await searchParams;
+  const sp = await searchParams;
+  const { notice, n } = sp;
+  const filter = [sp.group ?? []].flat();
 
   if (!membership) {
     return (
@@ -61,16 +63,20 @@ export default async function Overview({ searchParams }: { searchParams: Promise
 
   const db = getDb();
   const { workspace, role } = membership;
-  const markets = await listMarkets(db, workspace.id);
-  const focus = markets.find((m) => m.code === marketCode);
-  const shownMarkets = focus ? [focus] : markets;
-  const [accounts, followers, counts, upcoming] = await Promise.all([
+  const groupIds = filter.map((g) => (g === 'none' ? null : g));
+  const [groups, accounts, followers, counts, upcoming] = await Promise.all([
+    listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     followerStats(db, workspace.id),
-    overviewCounts(db, { workspaceId: workspace.id, marketId: focus?.id }),
-    upcomingTasks(db, { workspaceId: workspace.id, marketId: focus?.id, limit: 30 }),
+    overviewCounts(db, { workspaceId: workspace.id, groupIds, timeZone: workspace.timeZone }),
+    upcomingTasks(db, { workspaceId: workspace.id, groupIds, limit: 30 }),
   ]);
-  const shownAccounts = accounts.filter((a) => shownMarkets.some((m) => m.id === a.marketId));
+  const inFilter = (groupId: string | null) => filter.length === 0 || filter.includes(groupId ?? 'none');
+  const shownAccounts = accounts.filter((a) => inFilter(a.groupId));
+  // Ungrouped accounts get a card of their own, after the customer's groups.
+  const cards = [...groups.map((g) => ({ id: g.id as string | null, name: g.name })), { id: null, name: '未分組' }]
+    .filter((g) => inFilter(g.id) && accounts.some((a) => a.groupId === g.id));
+  const tz = workspace.timeZone;
   const expired = shownAccounts.filter((a) => a.status !== 'active');
   const withCounts = shownAccounts.filter((a) => followers.has(a.id));
   const total = withCounts.reduce((s, a) => s + followers.get(a.id)!.followers, 0);
@@ -78,9 +84,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const delta = deltas.reduce((s, d) => s + d, 0);
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
   const note = notice ? NOTICE[notice] : undefined;
-  const today = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
+  const today = new Intl.DateTimeFormat('zh-TW', { timeZone: tz, month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 
-  // One row per post, with a chip for each market it goes to.
+  // One row per post, with its accounts and the most urgent state among them.
   const byPost = new Map<string, ScheduledTask[]>();
   for (const t of upcoming) byPost.set(t.postId, [...(byPost.get(t.postId) ?? []), t]);
   const rows = [...byPost.values()].slice(0, 6);
@@ -90,10 +96,10 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       <header className="page-head">
         <div>
           <h1>總覽</h1>
-          <div className="sub">{workspace.name} · {today} · 以台北時間顯示</div>
+          <div className="sub">{workspace.name} · {today} · 以{zoneName(tz)}時間顯示</div>
         </div>
         <div className="row">
-          <SegLinks label="市場" items={[{ href: '/app', text: '全部市場', on: !focus }, ...markets.map((m) => ({ href: `/app?market=${m.code}`, text: m.name, on: focus?.id === m.id }))]} />
+          <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
           <a href="/app/posts/new" className="btn btn-primary">新增貼文</a>
         </div>
       </header>
@@ -104,7 +110,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <section className="alert" aria-label="需要處理">
           <span style={{ color: 'var(--err)', display: 'flex' }}><Icon name="alert" size={20} stroke={2} /></span>
           <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-            <div className="title">{markets.find((m) => m.id === expired[0]!.marketId)?.name}「{expired[0].name}」的授權已失效{expired.length > 1 ? `（另有 ${expired.length - 1} 個帳號）` : ''}</div>
+            <div className="title">{PLATFORM[expired[0].platform].name}「{expired[0].name}」的授權已失效{expired.length > 1 ? `（另有 ${expired.length - 1} 個帳號）` : ''}</div>
             <div className="body">這些帳號排定的貼文會發不出去。重新連結後，貼文會照原時間發布。</div>
           </div>
           <a className="btn btn-danger" href={reconnectHref(expired[0].platform)}>重新連結</a>
@@ -141,7 +147,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <a href="/app/approvals" className="card stat">
           <span className="small muted">待審核</span>
           <span className="value">{counts.pendingReview.posts} 篇</span>
-          <span className="small" style={{ color: counts.pendingReview.posts ? 'var(--warn)' : 'var(--ink-3)' }}>{counts.pendingReview.posts ? `${counts.pendingReview.tasks} 個帳號版本等核准` : '沒有待審貼文'}</span>
+          <span className="small" style={{ color: counts.pendingReview.posts ? 'var(--warn)' : 'var(--ink-3)' }}>{counts.pendingReview.posts ? '等擁有者或管理員核准' : '沒有待審貼文'}</span>
         </a>
         <a href="/app/calendar" className="card stat">
           <span className="small muted">發布失敗</span>
@@ -150,20 +156,19 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         </a>
       </section>
 
-      <section className="stack" aria-labelledby="h-markets">
-        <h2 id="h-markets">各市場</h2>
+      <section className="stack" aria-labelledby="h-groups">
+        <h2 id="h-groups">各群組</h2>
+        {cards.length === 0 && <div className="card card-pad small muted">還沒有連結帳號。<a href="/app/channels">去連結</a></div>}
         <div className="grid" style={{ '--min': '300px' } as CSSProperties}>
-          {shownMarkets.map((m) => {
-            const list = accounts.filter((a) => a.marketId === m.id);
-            const next = upcoming.find((t) => t.marketId === m.id);
+          {cards.map((g) => {
+            const list = accounts.filter((a) => a.groupId === g.id);
+            const zones = [...new Set(list.map((a) => a.timeZone))];
             return (
-              <div key={m.id} className="card">
+              <div key={g.id ?? 'none'} className="card">
                 <div className="row" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line-soft)', gap: 10 }}>
-                  <Mk code={m.code} dark />
-                  <span style={{ fontWeight: 600 }}>{m.name}</span>
-                  <span className="spacer tiny muted num">當地 {localTime(m.timeZone)}</span>
+                  <span style={{ fontWeight: 600 }}>{g.name}</span>
+                  <span className="spacer tiny muted num">{zones.map((z) => `${zoneName(z)} ${localTime(z)}`).join(' · ')}</span>
                 </div>
-                {list.length === 0 && <div className="small muted" style={{ padding: '10px 16px' }}>還沒有連結帳號。<a href="/app/channels">去連結</a></div>}
                 {list.map((a) => {
                   const f = followers.get(a.id);
                   const bad = a.status !== 'active';
@@ -177,9 +182,6 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                     </div>
                   );
                 })}
-                <div className="small" style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--line-soft)', color: 'var(--ink-2)' }}>
-                  下一篇：{next ? `${formatInZone(next.runAt, m.timeZone)} ${next.title}` : '尚無排程'}
-                </div>
               </div>
             );
           })}
@@ -194,26 +196,24 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         {rows.length === 0 && <div className="list-row small muted">沒有排程中的貼文。<a href="/app/posts/new">新增貼文</a></div>}
         {rows.map((tasks) => {
           const first = tasks[0]!;
-          const md = dayInZone(first.runAt, 'Asia/Taipei');
-          const hm = clockInZone(first.runAt, 'Asia/Taipei');
-          const codes = [...new Set(tasks.map((t) => t.marketCode))];
+          const [tone, label] = tasks.map(taskChip).sort((a, b) => SEVERITY.indexOf(a[0]) - SEVERITY.indexOf(b[0]))[0]!;
+          const spread = new Set(tasks.map((t) => t.runAt.getTime())).size > 1;
           return (
             <div key={first.postId} className="list-row">
               <div style={{ width: 96, display: 'flex', flexDirection: 'column' }}>
-                <span className="num" style={{ fontWeight: 600 }}>{hm}</span>
-                <span className="tiny muted">{md}</span>
+                <span className="num" style={{ fontWeight: 600 }}>{clockInZone(first.runAt, tz)}</span>
+                <span className="tiny muted">{dayInZone(first.runAt, tz)}</span>
               </div>
-              <div style={{ flex: '1 1 260px', minWidth: 0 }}>{first.title}</div>
-              <div className="row" style={{ gap: 6 }}>
-                {codes.map((code) => {
-                  const [tone, label] = tasks.filter((t) => t.marketCode === code).map(taskChip).sort((a, b) => SEVERITY.indexOf(a[0]) - SEVERITY.indexOf(b[0]))[0]!;
-                  return (
-                    <a key={code} href={tone === 'warn' ? '/app/approvals' : '/app/calendar'} style={{ color: 'inherit' }}>
-                      <Chip tone={tone}><strong>{code}</strong>{label}</Chip>
-                    </a>
-                  );
-                })}
+              <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+                <div>{first.title}</div>
+                <div className="row" style={{ gap: 4, marginTop: 4 }}>
+                  {tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={t.accountStatus !== 'active'} />)}
+                  <span className="tiny muted">{tasks.length} 個帳號{spread ? ' · 依各帳號時區，從這個時間開始' : ''}</span>
+                </div>
               </div>
+              <a href={tone === 'warn' ? '/app/approvals' : '/app/calendar'} style={{ color: 'inherit' }}>
+                <Chip tone={tone}>{label}</Chip>
+              </a>
             </div>
           );
         })}

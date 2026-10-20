@@ -1,8 +1,8 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
+  accountGroups,
   auditLog,
   connectedAccounts,
-  markets,
   postVariants,
   posts,
   publishTasks,
@@ -22,9 +22,10 @@ export type ComposeInput = {
   workspaceId: string;
   actor: string;
   role: Role;
+  /** The main text, sent to every account without its own. */
   body: string;
-  /** Per-platform text that replaces `body` for that platform. */
-  overrides?: Partial<Record<'facebook' | 'instagram' | 'line', string>>;
+  /** Text customised for one account, keyed by account id; replaces `body` for it. */
+  perAccount?: Record<string, string>;
   accountIds: string[];
   media: MediaItem[];
   schedule: Schedule;
@@ -42,10 +43,12 @@ const MEDIA_MAX = 10;
 const PAST_GRACE_MS = 60_000;
 
 /**
- * Create a post, one version per market and platform, and one publish task per account.
+ * Create a post with one version and one publish task per account.
  *
- * Owners and admins approve their own posts; anyone else's wait for review in markets
- * that require it, and the dispatcher skips them if nobody approves in time.
+ * A `local` schedule runs at the given wall-clock time on each account's own clock;
+ * `same` runs every account at one instant, read on the viewer's clock. Owners and
+ * admins approve their own posts; anyone else's wait for review when the workspace
+ * requires it, and the dispatcher skips them if nobody approves in time.
  *
  * Raises:
  *   ComposeError: the input breaks a platform rule or names an account outside the workspace.
@@ -57,16 +60,17 @@ export async function createPost(db: Db, input: ComposeInput) {
   if (input.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => /^https:\/\//.test(u)))) throw new ComposeError('圖片網址必須是 https。');
 
   const rows = await db
-    .select({ account: connectedAccounts, market: markets })
+    .select({ account: connectedAccounts, workspace: workspaces })
     .from(connectedAccounts)
-    .innerJoin(markets, eq(markets.id, connectedAccounts.marketId))
+    .innerJoin(workspaces, eq(workspaces.id, connectedAccounts.workspaceId))
     .where(and(eq(connectedAccounts.workspaceId, input.workspaceId), inArray(connectedAccounts.id, input.accountIds)));
   if (rows.length !== new Set(input.accountIds).size) throw new ComposeError('有帳號不屬於這個工作區，請重新整理後再試。');
 
-  const textFor = (platform: string) => (input.overrides?.[platform as 'facebook' | 'instagram' | 'line'] ?? input.body).trim();
+  // The composer's preview resolves text the same way, so what is shown is what is sent.
+  const textFor = (accountId: string) => (input.perAccount?.[accountId] ?? input.body).trim();
   for (const { account } of rows) {
     if (account.status !== 'active') throw new ComposeError(`「${account.name}」的授權已失效，請先重新連結。`);
-    const text = textFor(account.platform);
+    const text = textFor(account.id);
     if (account.platform === 'instagram') {
       if (input.media.length === 0) throw new ComposeError(`Instagram（${account.name}）一定要附至少一張圖片。`);
       if (text.length > IG_CAPTION_MAX) throw new ComposeError(`Instagram 內文最多 ${IG_CAPTION_MAX} 字，目前 ${text.length} 字。`);
@@ -88,36 +92,31 @@ export async function createPost(db: Db, input: ComposeInput) {
       throw new ComposeError('排程日期或時間格式不正確。');
     }
   };
-  const runAts = new Map(rows.map(({ market }) => [market.id, runAtFor(market.timeZone)]));
+  const runAts = new Map(rows.map(({ account }) => [account.id, runAtFor(account.timeZone)]));
   for (const [, at] of runAts) if (at.getTime() < now.getTime() - PAST_GRACE_MS) throw new ComposeError('排程時間已經過了，請選未來的時間。');
 
-  const selfApproves = input.role === 'owner' || input.role === 'admin';
-  const firstLine = (input.body.trim().split('\n')[0] ?? '').slice(0, 40) || '（只有圖片）';
+  const approved = input.role === 'owner' || input.role === 'admin' || !rows[0]!.workspace.requiresReview;
+  const firstLine = (input.body.trim().split('\n')[0] ?? '').slice(0, 40) || (input.media.length ? '（只有圖片）' : '（無標題）');
 
   return db.transaction(async (tx) => {
     const [post] = await tx.insert(posts).values({ workspaceId: input.workspaceId, title: firstLine }).returning();
-    const variantIds = new Map<string, string>();
-    for (const { account, market } of rows) {
-      const key = `${market.id}:${account.platform}`;
-      if (!variantIds.has(key)) {
-        const [v] = await tx.insert(postVariants).values({
-          postId: post!.id,
-          marketId: market.id,
-          platform: account.platform,
-          body: textFor(account.platform),
-          media: input.media,
-          reviewStatus: selfApproves || !market.requiresReview ? 'approved' : 'pending',
-        }).returning();
-        variantIds.set(key, v!.id);
-      }
-      await tx.insert(publishTasks).values({ variantId: variantIds.get(key)!, accountId: account.id, runAt: runAts.get(market.id)! });
+    for (const { account } of rows) {
+      const [v] = await tx.insert(postVariants).values({
+        postId: post!.id,
+        accountId: account.id,
+        platform: account.platform,
+        body: textFor(account.id),
+        media: input.media,
+        reviewStatus: approved ? 'approved' : 'pending',
+      }).returning();
+      await tx.insert(publishTasks).values({ variantId: v!.id, accountId: account.id, runAt: runAts.get(account.id)! });
     }
     await tx.insert(auditLog).values({
       workspaceId: input.workspaceId,
       actor: input.actor,
       action: 'post.created',
       target: post!.id,
-      detail: { title: post!.title, accounts: rows.length, schedule: input.schedule.mode },
+      detail: { title: post!.title, accounts: rows.length, customised: rows.filter(({ account }) => input.perAccount?.[account.id] !== undefined).length, schedule: input.schedule.mode },
     });
     return { postId: post!.id, tasks: rows.length };
   });
@@ -138,12 +137,12 @@ export async function listPosts(db: Db, workspaceId: string, limit = 30) {
       review: postVariants.reviewStatus,
       account: connectedAccounts.name,
       platform: connectedAccounts.platform,
-      market: markets.code,
+      group: accountGroups.name,
     })
     .from(publishTasks)
     .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
-    .innerJoin(markets, eq(markets.id, postVariants.marketId))
+    .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId))
     .where(inArray(postVariants.postId, recent.map((p) => p.id)))
     .orderBy(publishTasks.runAt);
   return recent.map((p) => ({ ...p, tasks: tasks.filter((t) => t.postId === p.id) }));

@@ -1,5 +1,5 @@
-// Create a customer's workspace with its markets and first owner.
-// Usage: DATABASE_URL=... tsx scripts/bootstrap-workspace.ts "<workspace name>" <owner email>
+// Create a customer's workspace and its first owner; the customer makes their own groups.
+// Usage: DATABASE_URL=... [WORKSPACE_TIME_ZONE=Asia/Taipei] tsx scripts/bootstrap-workspace.ts "<workspace name>" <owner email>
 // The owner must have signed in once, so Supabase has created their user.
 import { sql } from 'drizzle-orm';
 import { createDb } from '../src/db/index';
@@ -25,11 +25,7 @@ if (!userId) {
 const ws = await bootstrapWorkspace(db, {
   name,
   owner: { userId, email },
-  markets: [
-    { code: 'TW', name: '台灣', locale: 'zh-Hant-TW', timeZone: 'Asia/Taipei' },
-    { code: 'US', name: '美國', locale: 'en-US', timeZone: 'America/New_York' },
-    { code: 'JP', name: '日本', locale: 'ja-JP', timeZone: 'Asia/Tokyo' },
-  ],
+  timeZone: process.env.WORKSPACE_TIME_ZONE,
 });
 console.log(`Created workspace "${ws.name}" (${ws.id}) owned by ${email}`);
 process.exit(0);

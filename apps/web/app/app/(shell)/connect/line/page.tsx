@@ -1,13 +1,9 @@
-import { listMarkets } from '@kdan-social/core';
 import { requireWorkspace } from '@/lib/auth';
-import { getDb } from '@/lib/server';
 import { connectLineAccount } from '@/app/app/actions';
 
 export default async function ConnectLine({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { workspace } = await requireWorkspace();
+  await requireWorkspace();
   const { error } = await searchParams;
-  const markets = await listMarkets(getDb(), workspace.id);
-  const tw = markets.find((m) => m.code === 'TW');
   return (
     <main className="main" style={{ maxWidth: 720, margin: '0 auto' }}>
       <header>
@@ -25,12 +21,6 @@ export default async function ConnectLine({ searchParams }: { searchParams: Prom
       </section>
       <form action={connectLineAccount} className="card card-pad stack">
         <div className="field">
-          <label htmlFor="market">市場</label>
-          <select id="market" name="marketId" className="select" defaultValue={tw?.id}>
-            {markets.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
           <label htmlFor="cid">Channel ID</label>
           <input id="cid" name="channelId" className="input" inputMode="numeric" required autoComplete="off" placeholder="例：2001234567" />
         </div>
@@ -41,7 +31,7 @@ export default async function ConnectLine({ searchParams }: { searchParams: Prom
         </div>
         {error && <p className="small" style={{ color: 'var(--err)', margin: 0 }} role="alert">{error}</p>}
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <a className="btn" href="/app">取消</a>
+          <a className="btn" href="/app/channels">取消</a>
           <button className="btn btn-primary" type="submit">驗證並連結</button>
         </div>
       </form>

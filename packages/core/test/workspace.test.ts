@@ -10,7 +10,6 @@ import {
   bootstrapWorkspace,
   completeMetaConnect,
   listAccounts,
-  listMarkets,
   membershipFor,
   pendingMetaConnect,
   queueDryRunTest,
@@ -22,10 +21,6 @@ import { fakeFetch, KEY, testDb } from './helpers';
 const app = { appId: '158', appSecret: 'app-secret', redirectUri: 'https://kdan-social.vercel.app/api/meta/callback' };
 const owner = { userId: '00000000-0000-4000-8000-000000000001', email: 'bennett@example.com' };
 const stranger = '00000000-0000-4000-8000-000000000002';
-const MARKETS = [
-  { code: 'TW', name: '台灣', locale: 'zh-Hant-TW', timeZone: 'Asia/Taipei' },
-  { code: 'JP', name: '日本', locale: 'ja-JP', timeZone: 'Asia/Tokyo' },
-];
 const PAGES = [
   { id: 'page-tw', name: 'KDAN Mobile 台灣', token: 'page-token-tw', instagram: { id: 'ig-tw', username: 'kdanmobile_tw' } },
   { id: 'page-jp', name: 'KDAN Mobile 日本', token: 'page-token-jp', instagram: null },
@@ -33,9 +28,8 @@ const PAGES = [
 
 async function setup() {
   const db = await testDb();
-  const ws = await bootstrapWorkspace(db, { name: 'KDAN Mobile', owner, markets: MARKETS });
-  const ms = await listMarkets(db, ws.id);
-  return { db, ws, tw: ms.find((m) => m.code === 'TW')!, jp: ms.find((m) => m.code === 'JP')! };
+  const ws = await bootstrapWorkspace(db, { name: 'KDAN Mobile', owner });
+  return { db, ws };
 }
 
 describe('metaLoginUrl', () => {
@@ -71,7 +65,7 @@ describe('exchangeCodeForPages', () => {
 
 describe('meta connect', () => {
   it('shows pending pages without tokens, then saves the chosen ones encrypted', async () => {
-    const { db, ws, tw, jp } = await setup();
+    const { db, ws } = await setup();
     const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
 
     const pending = await pendingMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId });
@@ -80,7 +74,7 @@ describe('meta connect', () => {
 
     const { connected } = await completeMetaConnect(db, KEY, {
       sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email,
-      selections: [{ pageId: 'page-tw', marketId: tw.id, instagram: true }, { pageId: 'page-jp', marketId: jp.id, instagram: true }],
+      selections: [{ pageId: 'page-tw', instagram: true }, { pageId: 'page-jp', instagram: true }],
     });
     expect(connected).toBe(3);
     const accounts = await listAccounts(db, ws.id);
@@ -93,10 +87,10 @@ describe('meta connect', () => {
   });
 
   it('reactivates an expired account when it is connected again', async () => {
-    const { db, ws, tw } = await setup();
+    const { db, ws } = await setup();
     const connect = async () => {
       const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
-      await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', marketId: tw.id, instagram: false }] });
+      await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', instagram: false }] });
     };
     await connect();
     await db.update(connectedAccounts).set({ status: 'expired', statusDetail: 'Session has expired' });
@@ -107,20 +101,24 @@ describe('meta connect', () => {
   });
 
   it('refuses a session that belongs to someone else or has expired', async () => {
-    const { db, ws, tw } = await setup();
+    const { db, ws } = await setup();
     const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES, now: new Date('2026-10-20T00:00:00Z') });
     expect(await pendingMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: stranger })).toBeNull();
     expect(await pendingMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, now: new Date('2026-10-20T00:16:00Z') })).toBeNull();
-    await expect(completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: stranger, actor: 'x', selections: [{ pageId: 'page-tw', marketId: tw.id, instagram: false }] })).rejects.toThrow(AccessError);
+    await expect(completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: stranger, actor: 'x', selections: [{ pageId: 'page-tw', instagram: false }] })).rejects.toThrow(AccessError);
   });
 
-  it('refuses a market from another workspace', async () => {
+  it('starts new accounts ungrouped on the workspace clock, and keeps their settings when reconnected', async () => {
     const { db, ws } = await setup();
-    const other = await bootstrapWorkspace(db, { name: 'Other', owner: { userId: stranger, email: 'x@example.com' }, markets: MARKETS });
-    const foreignMarket = (await listMarkets(db, other.id))[0]!;
-    const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
-    await expect(completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', marketId: foreignMarket.id, instagram: false }] })).rejects.toThrow(/Unknown market/);
-    expect(await listAccounts(db, ws.id)).toHaveLength(0);
+    const connect = async () => {
+      const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
+      await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', instagram: false }] });
+    };
+    await connect();
+    expect((await listAccounts(db, ws.id))[0]).toMatchObject({ groupId: null, timeZone: 'Asia/Taipei' });
+    await db.update(connectedAccounts).set({ timeZone: 'Asia/Tokyo' });
+    await connect();
+    expect((await listAccounts(db, ws.id))[0]).toMatchObject({ timeZone: 'Asia/Tokyo' });
   });
 });
 
@@ -132,9 +130,9 @@ describe('membership and test posts', () => {
   });
 
   it('queues a test that the dispatcher records as a dry run', async () => {
-    const { db, ws, tw } = await setup();
+    const { db, ws } = await setup();
     const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
-    await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', marketId: tw.id, instagram: false }] });
+    await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', instagram: false }] });
     const [account] = await listAccounts(db, ws.id);
     const now = new Date('2026-10-20T08:00:00Z');
     await queueDryRunTest(db, { workspaceId: ws.id, accountId: account!.id, globalEnabled: true, actor: owner.email, now });
@@ -147,9 +145,9 @@ describe('membership and test posts', () => {
   });
 
   it('refuses a test post while publishing is on, so it cannot go out for real', async () => {
-    const { db, ws, tw } = await setup();
+    const { db, ws } = await setup();
     const sessionId = await startMetaConnect(db, KEY, { workspaceId: ws.id, userId: owner.userId, pages: PAGES });
-    await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', marketId: tw.id, instagram: false }] });
+    await completeMetaConnect(db, KEY, { sessionId, workspaceId: ws.id, userId: owner.userId, actor: owner.email, selections: [{ pageId: 'page-tw', instagram: false }] });
     await db.execute(sql`update workspaces set publishing_enabled = true`);
     const [account] = await listAccounts(db, ws.id);
     await expect(queueDryRunTest(db, { workspaceId: ws.id, accountId: account!.id, globalEnabled: true, actor: owner.email })).rejects.toThrow(/would go out for real/);

@@ -1,9 +1,9 @@
-import { clockInZone, dayInZone, formatInZone, listMarkets, tasksBetween, weekStart, type ScheduledTask } from '@kdan-social/core';
-import { errorText, Icon, Mk, Pf, SegLinks } from '@/components/ui';
+import { clockInZone, dayInZone, formatInZone, listGroups, tasksBetween, weekStart, type ScheduledTask } from '@kdan-social/core';
+import { FilterMenu } from '@/components/groups';
+import { errorText, GroupTag, Icon, Pf, SegLinks, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 
-const VIEW_TZ = 'Asia/Taipei';
 const WD = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
 const ST: Record<string, { bar: string; label: string; fg: string; border: string; style: string }> = {
   published: { bar: 'var(--ok)', label: '已發布', fg: 'var(--ok)', border: 'var(--line)', style: 'solid' },
@@ -31,49 +31,50 @@ function stateOf(t: ScheduledTask) {
 /** Flag a task's icon when it failed, or still waits on an account whose authorization expired. */
 const isBad = (t: ScheduledTask) => t.status === 'failed' || ((t.status === 'scheduled' || t.status === 'running') && t.accountStatus !== 'active');
 
-type Card = { postId: string; marketCode: string; time: string; local: string | null; title: string; state: string; tasks: ScheduledTask[]; detail: string | null };
+type Card = { key: string; groupName: string | null; time: string; local: string | null; title: string; state: string; tasks: ScheduledTask[]; detail: string | null };
 
-/** Group a day's tasks into one card per post and market, as the prototype shows them. */
-function cardsFor(tasks: ScheduledTask[]): Card[] {
+/** Group a day's tasks into one card per post and account group, as the prototype shows them. */
+function cardsFor(tasks: ScheduledTask[], viewTz: string): Card[] {
   const map = new Map<string, ScheduledTask[]>();
-  for (const t of tasks) map.set(`${t.postId}:${t.marketCode}`, [...(map.get(`${t.postId}:${t.marketCode}`) ?? []), t]);
+  for (const t of tasks) map.set(`${t.postId}:${t.groupId}`, [...(map.get(`${t.postId}:${t.groupId}`) ?? []), t]);
   const order = ['risk', 'failed', 'changes', 'needs_check', 'missed', 'pending', 'running', 'scheduled', 'published', 'dry_run'];
   return [...map.values()].map((list) => {
     const t = list[0]!;
     const state = list.map(stateOf).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]!;
-    const viewer = clockInZone(t.runAt, VIEW_TZ);
-    const local = t.timeZone === VIEW_TZ ? null : `當地 ${formatInZone(t.runAt, t.timeZone)}`;
+    const viewer = clockInZone(t.runAt, viewTz);
+    // Each account's own clock, where it differs from the viewer's.
+    const local = [...new Set(list.filter((x) => x.timeZone !== viewTz).map((x) => `${formatInZone(x.runAt, x.timeZone)}（${zoneName(x.timeZone)}）`))].join(' · ') || null;
     const err = errorText(list.find((x) => x.lastError)?.lastError ?? null);
-    return { postId: t.postId, marketCode: t.marketCode, time: viewer, local, title: t.title, state, tasks: list, detail: err };
+    return { key: `${t.postId}:${t.groupId}`, groupName: t.groupName, time: viewer, local, title: t.title, state, tasks: list, detail: err };
   });
 }
 
-export default async function Calendar({ searchParams }: { searchParams: Promise<{ week?: string; view?: string; market?: string; created?: string }> }) {
+export default async function Calendar({ searchParams }: { searchParams: Promise<{ week?: string; view?: string; group?: string | string[]; created?: string }> }) {
   const { workspace } = await requireWorkspace();
   const q = await searchParams;
   const week = Number.parseInt(q.week ?? '0', 10) || 0;
   const view = q.view === 'list' ? 'list' : 'week';
   const db = getDb();
-  const markets = await listMarkets(db, workspace.id);
-  const focus = markets.find((m) => m.code === q.market);
+  const viewTz = workspace.timeZone;
+  const filter = [q.group ?? []].flat();
+  const groups = await listGroups(db, workspace.id);
 
-  const start = new Date(weekStart(new Date(), VIEW_TZ).getTime() + week * 7 * 86_400_000);
+  const start = new Date(weekStart(new Date(), viewTz).getTime() + week * 7 * 86_400_000);
   const end = new Date(start.getTime() + 7 * 86_400_000);
-  const tasks = await tasksBetween(db, { workspaceId: workspace.id, from: start, to: end, marketId: focus?.id });
-  const todayKey = dayInZone(new Date(), VIEW_TZ);
+  const tasks = await tasksBetween(db, { workspaceId: workspace.id, from: start, to: end, groupIds: filter.map((g) => (g === 'none' ? null : g)) });
+  const todayKey = dayInZone(new Date(), viewTz);
   const days = Array.from({ length: 7 }, (_, i) => {
     const at = new Date(start.getTime() + i * 86_400_000);
-    const key = dayInZone(at, VIEW_TZ);
-    const dayTasks = tasks.filter((t) => dayInZone(t.runAt, VIEW_TZ) === key);
-    return { key, wd: WD[i]!, num: key.split('/')[1], today: key === todayKey, past: at.getTime() + 86_400_000 < Date.now(), cards: cardsFor(dayTasks) };
+    const key = dayInZone(at, viewTz);
+    const dayTasks = tasks.filter((t) => dayInZone(t.runAt, viewTz) === key);
+    return { key, wd: WD[i]!, num: key.split('/')[1], today: key === todayKey, past: at.getTime() + 86_400_000 < Date.now(), cards: cardsFor(dayTasks, viewTz) };
   });
-  const href = (p: Partial<{ week: number; view: string; market: string | undefined }>) => {
+  const href = (p: Partial<{ week: number; view: string }>) => {
     const s = new URLSearchParams();
     const w = p.week ?? week;
     if (w) s.set('week', String(w));
     if ((p.view ?? view) === 'list') s.set('view', 'list');
-    const mk = 'market' in p ? p.market : focus?.code;
-    if (mk) s.set('market', mk);
+    for (const g of filter) s.append('group', g);
     const qs = s.toString();
     return `/app/calendar${qs ? `?${qs}` : ''}`;
   };
@@ -91,9 +92,9 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
           <span style={{ fontWeight: 500 }}>{start.getUTCFullYear()} 年 {days[0]!.key} – {days[6]!.key}</span>
         </div>
         <div className="row">
-          <SegLinks label="市場" items={[{ href: href({ market: undefined }), text: '全部', on: !focus }, ...markets.map((m) => ({ href: href({ market: m.code }), text: m.name, on: focus?.id === m.id }))]} />
+          <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
           <SegLinks label="檢視" items={[{ href: href({ view: 'week' }), text: '週', on: view === 'week' }, { href: href({ view: 'list' }), text: '清單', on: view === 'list' }]} />
-          <span className="chip" style={{ height: 36, border: '1px solid var(--control)', background: '#fff', fontSize: 13 }}>顯示時區：台北</span>
+          <span className="chip" style={{ height: 36, border: '1px solid var(--control)', background: '#fff', fontSize: 13 }}>顯示時區：{zoneName(viewTz)}</span>
         </div>
       </header>
 
@@ -119,11 +120,11 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
                   {d.cards.map((c) => {
                     const s = ST[c.state] ?? ST.scheduled!;
                     return (
-                      <a key={c.postId + c.marketCode} href={c.state === 'pending' || c.state === 'changes' ? '/app/approvals' : `/app/calendar?view=list${week ? `&week=${week}` : ''}`}
+                      <a key={c.key} href={c.state === 'pending' || c.state === 'changes' ? '/app/approvals' : `/app/calendar?view=list${week ? `&week=${week}` : ''}`}
                         style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', borderRadius: 8, border: `1px ${s.style} ${s.border}`, background: '#fff', boxShadow: `inset 3px 0 0 ${s.bar}`, color: 'var(--ink)' }}>
                         <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
                           <span className="tiny num" style={{ fontWeight: 600 }}>{c.time}</span>
-                          <Mk code={c.marketCode} />
+                          <GroupTag name={c.groupName} />
                           <span className="spacer" style={{ fontSize: 11, color: s.fg }}>{s.label}</span>
                         </span>
                         {c.local && <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{c.local}</span>}
@@ -147,9 +148,9 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
             const fb = c.tasks.find((t) => t.platform === 'facebook' && t.externalPostId);
             const [page, post] = fb?.externalPostId?.split('_') ?? [];
             return (
-              <div key={c.postId + c.marketCode} className="list-row">
+              <div key={c.key} className="list-row">
                 <span className="num" style={{ width: 120, color: 'var(--ink-2)' }}>{d.wd} {d.key} {c.time}</span>
-                <Mk code={c.marketCode} />
+                <GroupTag name={c.groupName} />
                 <span style={{ flex: '1 1 260px', minWidth: 0 }}>{c.title}</span>
                 <span className="row" style={{ gap: 4 }}>{c.tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={isBad(t)} />)}</span>
                 <span className="small" style={{ width: 200, textAlign: 'right', color: s.fg }}>{s.label}{page && post ? <> · <a href={`https://www.facebook.com/${page}/posts/${post}`} target="_blank" rel="noreferrer">看貼文</a></> : null}</span>
@@ -160,7 +161,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
         </div>
       )}
 
-      <p className="small muted">時間都換算成台北時間顯示，卡片第二行是當地時間。三個平台都由我們的排程器在時間到時送出。帳號授權失效時，相關貼文會提前標紅。</p>
+      <p className="small muted">時間都換算成{zoneName(viewTz)}時間顯示，卡片第二行是該帳號時區的當地時間。三個平台都由我們的排程器在時間到時送出。帳號授權失效時，相關貼文會提前標紅。</p>
     </main>
   );
 }

@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./db": "./src/db/index.ts"
+    "./db": "./src/db/index.ts",
+    "./time": "./src/time.ts"
   },
   "scripts": {
     "test": "vitest run",

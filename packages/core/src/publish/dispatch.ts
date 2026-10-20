@@ -3,7 +3,6 @@ import { accountContext, decrypt, DecryptError } from '../crypto';
 import {
   auditLog,
   connectedAccounts,
-  markets,
   postVariants,
   posts,
   publishTasks,
@@ -86,17 +85,16 @@ export async function dispatchDue(opts: DispatchOptions): Promise<DispatchSummar
 async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (line: string) => void): Promise<Outcome> {
   const { db } = opts;
   const [row] = await db
-    .select({ task: publishTasks, variant: postVariants, post: posts, market: markets, account: connectedAccounts, workspace: workspaces })
+    .select({ task: publishTasks, variant: postVariants, post: posts, account: connectedAccounts, workspace: workspaces })
     .from(publishTasks)
     .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
     .innerJoin(posts, eq(posts.id, postVariants.postId))
-    .innerJoin(markets, eq(markets.id, postVariants.marketId))
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
     .innerJoin(workspaces, eq(workspaces.id, connectedAccounts.workspaceId))
     .where(eq(publishTasks.id, taskId));
   if (!row) return 'failed';
-  const { task, variant, post, market, account, workspace } = row;
-  const where = `"${post.title}" to ${account.platform} ${account.name} (${market.code})`;
+  const { task, variant, post, account, workspace } = row;
+  const where = `"${post.title}" to ${account.platform} ${account.name}`;
 
   const finish = async (status: 'published' | 'dry_run' | 'failed' | 'needs_check' | 'missed', fields: { lastError?: string; externalPostId?: string } = {}) => {
     await db.update(publishTasks).set({ status, finishedAt: now, lastError: fields.lastError ?? null, externalPostId: fields.externalPostId ?? null }).where(eq(publishTasks.id, taskId));
@@ -105,12 +103,12 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
       actor: 'system:dispatcher',
       action: `publish.${status}`,
       target: taskId,
-      detail: { post: post.title, account: account.name, platform: account.platform, market: market.code, ...fields },
+      detail: { post: post.title, account: account.name, platform: account.platform, ...fields },
     });
     return status;
   };
 
-  if (market.requiresReview && variant.reviewStatus !== 'approved') {
+  if (workspace.requiresReview && variant.reviewStatus !== 'approved') {
     log(`Skipped ${where}: not approved before its scheduled time`);
     return finish('missed', { lastError: 'Not approved before its scheduled time' });
   }

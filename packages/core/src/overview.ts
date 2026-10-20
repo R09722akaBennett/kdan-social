@@ -1,5 +1,5 @@
-import { and, asc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
-import { connectedAccounts, followerSnapshots, markets, postVariants, posts, publishTasks, type Db } from './db/index';
+import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
+import { accountGroups, connectedAccounts, followerSnapshots, postVariants, posts, publishTasks, type Db } from './db/index';
 import { zonedTimeToUtc } from './time';
 
 export type FollowerStat = { followers: number; day: string; delta7: number | null };
@@ -40,13 +40,23 @@ export function weekStart(now: Date, timeZone: string): Date {
   return zonedTimeToUtc(monday, '00:00', timeZone);
 }
 
-const inMarket = (marketId?: string): SQL | undefined => (marketId ? eq(postVariants.marketId, marketId) : undefined);
+/**
+ * Accounts in any of `groupIds`, where null stands for ungrouped accounts.
+ * Undefined or empty means every account.
+ */
+export type GroupFilter = Array<string | null> | undefined;
+
+function inGroups(groupIds: GroupFilter): SQL | undefined {
+  if (!groupIds?.length) return undefined;
+  const ids = groupIds.filter((g): g is string => g !== null);
+  return or(ids.length ? inArray(connectedAccounts.groupId, ids) : undefined, groupIds.includes(null) ? isNull(connectedAccounts.groupId) : undefined);
+}
 
 /**
  * The numbers on the overview: what went out this week, what waits for review, and
- * what failed in the last seven days, optionally for one market.
+ * what failed in the last seven days, optionally for some groups.
  */
-export async function overviewCounts(db: Db, a: { workspaceId: string; now?: Date; marketId?: string; timeZone?: string }) {
+export async function overviewCounts(db: Db, a: { workspaceId: string; now?: Date; groupIds?: GroupFilter; timeZone?: string }) {
   const now = a.now ?? new Date();
   const since = weekStart(now, a.timeZone ?? 'Asia/Taipei');
   const base = (extra: SQL | undefined) =>
@@ -55,7 +65,8 @@ export async function overviewCounts(db: Db, a: { workspaceId: string; now?: Dat
       .from(publishTasks)
       .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
       .innerJoin(posts, eq(posts.id, postVariants.postId))
-      .where(and(eq(posts.workspaceId, a.workspaceId), inMarket(a.marketId), extra));
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
+      .where(and(eq(posts.workspaceId, a.workspaceId), inGroups(a.groupIds), extra));
   const [published, pending, failed] = await Promise.all([
     base(and(eq(publishTasks.status, 'published'), gte(publishTasks.finishedAt, since))),
     base(and(eq(publishTasks.status, 'scheduled'), eq(postVariants.reviewStatus, 'pending'))),
@@ -81,13 +92,15 @@ export type ScheduledTask = {
   platform: 'facebook' | 'instagram' | 'line';
   account: string;
   accountStatus: (typeof connectedAccounts.$inferSelect)['status'];
-  marketId: string;
-  marketCode: string;
+  accountId: string;
+  groupId: string | null;
+  groupName: string | null;
+  /** The account's own clock. */
   timeZone: string;
 };
 
-/** Tasks whose time falls in [from, to), oldest first, optionally for one market. */
-export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: Date; marketId?: string; limit?: number; statuses?: ScheduledTask['status'][] }): Promise<ScheduledTask[]> {
+/** Tasks whose time falls in [from, to), oldest first, optionally for some groups. */
+export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: Date; groupIds?: GroupFilter; limit?: number; statuses?: ScheduledTask['status'][] }): Promise<ScheduledTask[]> {
   const q = db
     .select({
       id: publishTasks.id,
@@ -101,18 +114,19 @@ export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: D
       platform: connectedAccounts.platform,
       account: connectedAccounts.name,
       accountStatus: connectedAccounts.status,
-      marketId: markets.id,
-      marketCode: markets.code,
-      timeZone: markets.timeZone,
+      accountId: connectedAccounts.id,
+      groupId: connectedAccounts.groupId,
+      groupName: accountGroups.name,
+      timeZone: connectedAccounts.timeZone,
     })
     .from(publishTasks)
     .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
     .innerJoin(posts, eq(posts.id, postVariants.postId))
-    .innerJoin(markets, eq(markets.id, postVariants.marketId))
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
+    .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId))
     .where(and(
       eq(posts.workspaceId, a.workspaceId),
-      inMarket(a.marketId),
+      inGroups(a.groupIds),
       gte(publishTasks.runAt, a.from),
       lt(publishTasks.runAt, a.to),
       a.statuses ? inArray(publishTasks.status, a.statuses) : undefined,
@@ -122,7 +136,7 @@ export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: D
 }
 
 /** Tasks still waiting to go out, soonest first. */
-export function upcomingTasks(db: Db, a: { workspaceId: string; now?: Date; marketId?: string; limit?: number }) {
+export function upcomingTasks(db: Db, a: { workspaceId: string; now?: Date; groupIds?: GroupFilter; limit?: number }) {
   const now = a.now ?? new Date();
   return tasksBetween(db, { ...a, from: new Date(0), to: new Date(now.getTime() + 366 * 86_400_000), limit: a.limit ?? 8, statuses: ['scheduled', 'running'] });
 }

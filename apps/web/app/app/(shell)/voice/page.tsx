@@ -7,7 +7,7 @@ export default async function Page() {
       <header className="page-head">
         <div>
           <h1>品牌語氣</h1>
-          <div className="sub">AI 寫文案、改寫、在地化時都照這裡。品牌設定套用到所有市場，各市場再疊加自己的規則。</div>
+          <div className="sub">AI 寫文案、改寫、在地化時都照這裡。品牌設定套用到所有帳號；群組可以再疊加自己的規則（選填）。</div>
         </div>
       </header>
       <div className="card card-pad stack" style={{ gap: 6 }}>

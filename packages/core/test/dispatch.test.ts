@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { auditLog, connectedAccounts, publishTasks, type Db } from '../src/db/index';
+import { auditLog, connectedAccounts, publishTasks, workspaces, type Db } from '../src/db/index';
 import { createClients } from '../src/index';
 import { dispatchDue, MAX_ATTEMPTS } from '../src/publish/dispatch';
 import { fakeFetch, KEY, seed, testDb } from './helpers';
@@ -22,7 +22,7 @@ describe('dispatchDue', () => {
     const { summary, lines } = await run(db, f);
     expect(summary.dry_run).toBe(1);
     expect(f.calls).toHaveLength(0);
-    expect(lines[0]).toMatch(/^\[dry-run\] Will publish "雙十一預告" to facebook KDAN Mobile 台灣 \(TW\)/);
+    expect(lines[0]).toMatch(/^\[dry-run\] Will publish "雙十一預告" to facebook KDAN Mobile 台灣 with 0 media item\(s\)$/);
     expect((await taskOf(db, task.id)).status).toBe('dry_run');
     expect((await db.select().from(auditLog))[0]!.action).toBe('publish.dry_run');
   });
@@ -61,6 +61,13 @@ describe('dispatchDue', () => {
     expect((await run(db, f)).summary.missed).toBe(1);
     expect(f.calls).toHaveLength(0);
     expect((await taskOf(db, task.id)).lastError).toMatch(/Not approved/);
+  });
+
+  it('does not wait for approval when the workspace does not require review', async () => {
+    const db = await testDb();
+    await seed(db, { review: 'pending' });
+    await db.update(workspaces).set({ requiresReview: false });
+    expect((await run(db, fakeFetch())).summary.dry_run).toBe(1);
   });
 
   it('fails without calling the platform when the account is already expired', async () => {

@@ -4,7 +4,8 @@ import { accountContext, encrypt } from '../src/crypto';
 import { connectedAccounts, followerSnapshots, postVariants, publishTasks } from '../src/db/index';
 import { followerStats, overviewCounts, tasksBetween, upcomingTasks, weekStart } from '../src/overview';
 import { createPost } from '../src/posts';
-import { bootstrapWorkspace, listMarkets } from '../src/workspace';
+import { saveGroup } from '../src/groups';
+import { bootstrapWorkspace } from '../src/workspace';
 import { KEY, testDb } from './helpers';
 
 const owner = { userId: '00000000-0000-4000-8000-000000000001', email: 'owner@example.com' };
@@ -13,21 +14,16 @@ const NOW = new Date('2026-10-20T08:00:00Z');
 
 async function setup() {
   const db = await testDb();
-  const ws = await bootstrapWorkspace(db, {
-    name: 'KDAN', owner, markets: [
-      { code: 'TW', name: '台灣', locale: 'zh-Hant-TW', timeZone: 'Asia/Taipei' },
-      { code: 'JP', name: '日本', locale: 'ja-JP', timeZone: 'Asia/Tokyo' },
-    ],
-  });
-  const ms = await listMarkets(db, ws.id);
-  const tw = ms.find((m) => m.code === 'TW')!;
-  const jp = ms.find((m) => m.code === 'JP')!;
-  const add = async (externalId: string, marketId: string) => {
+  const ws = await bootstrapWorkspace(db, { name: 'KDAN', owner });
+  const add = async (externalId: string, timeZone: string) => {
     const ref = { workspaceId: ws.id, platform: 'facebook' as const, externalId };
-    const [a] = await db.insert(connectedAccounts).values({ ...ref, marketId, name: externalId, credentials: encrypt('{}', KEY, accountContext(ref)) }).returning();
+    const [a] = await db.insert(connectedAccounts).values({ ...ref, timeZone, name: externalId, credentials: encrypt('{}', KEY, accountContext(ref)) }).returning();
     return a!.id;
   };
-  return { db, ws, tw, jp, twFb: await add('tw-page', tw.id), jpFb: await add('jp-page', jp.id) };
+  const twFb = await add('tw-page', 'Asia/Taipei');
+  const jpFb = await add('jp-page', 'Asia/Tokyo');
+  const tw = await saveGroup(db, { workspaceId: ws.id, name: '台灣', accountIds: [twFb], actor: 'x', role: 'owner' });
+  return { db, ws, tw, twFb, jpFb };
 }
 
 describe('weekStart', () => {
@@ -77,20 +73,25 @@ describe('overview counts and upcoming tasks', () => {
     expect(c.failed).toEqual({ posts: 1, tasks: 1 });
   });
 
-  it('narrows every number to one market', async () => {
+  it('narrows every number to the chosen groups, with null for ungrouped accounts', async () => {
     const { db, ws, tw } = await seeded();
-    const c = await overviewCounts(db, { workspaceId: ws.id, now: NOW, marketId: tw.id });
+    const c = await overviewCounts(db, { workspaceId: ws.id, now: NOW, groupIds: [tw] });
     expect(c.published).toEqual({ posts: 1, tasks: 1 });
     expect(c.failed.tasks).toBe(0);
+    const ungrouped = await overviewCounts(db, { workspaceId: ws.id, now: NOW, groupIds: [null] });
+    expect(ungrouped.failed.tasks).toBe(1);
+    expect(ungrouped.pendingReview.tasks).toBe(0);
+    expect((await overviewCounts(db, { workspaceId: ws.id, now: NOW, groupIds: [tw, null] })).published.tasks).toBe(2);
   });
 
-  it('lists only tasks still waiting, soonest first, with their market', async () => {
+  it('lists only tasks still waiting, soonest first, with each account’s clock', async () => {
     const { db, ws } = await seeded();
     const up = await upcomingTasks(db, { workspaceId: ws.id, now: NOW });
     expect(up.map((t) => t.status)).toEqual(['scheduled', 'scheduled', 'scheduled']);
     expect(up.map((t) => t.runAt.getTime())).toEqual([...up.map((t) => t.runAt.getTime())].sort((a, b) => a - b));
     // Tokyo is an hour ahead, so its 20:00 comes before Taipei's.
-    expect(up[0]!.marketCode).toBe('JP');
+    expect(up[0]).toMatchObject({ timeZone: 'Asia/Tokyo', groupId: null, groupName: null });
+    expect(up[1]).toMatchObject({ timeZone: 'Asia/Taipei', groupName: '台灣' });
   });
 
   it('returns tasks in a time window for the calendar', async () => {

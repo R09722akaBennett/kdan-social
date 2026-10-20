@@ -7,7 +7,7 @@ export default async function Page() {
       <header className="page-head">
         <div>
           <h1>成效</h1>
-          <div className="sub">各市場、各平台的粉絲數與貼文成效。</div>
+          <div className="sub">各帳號的粉絲數與貼文成效，可以依群組篩選。</div>
         </div>
       </header>
       <div className="card card-pad stack" style={{ gap: 6 }}>

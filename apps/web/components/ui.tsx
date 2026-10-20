@@ -18,6 +18,8 @@ const ICONS = {
   send: 'M12 19V5M5 12l7-7 7 7',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   close: 'M6 6l12 12M18 6 6 18',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
 } as const;
 export type IconName = keyof typeof ICONS;
 
@@ -41,8 +43,10 @@ export function Pf({ pf, size, bad }: { pf: Platform; size?: 'sm' | 'lg'; bad?: 
   return <span className={cls} role="img" aria-label={PLATFORM[pf].name + (bad ? '（有問題）' : '')}>{PLATFORM[pf].label}</span>;
 }
 
-export function Mk({ code, dark }: { code: string; dark?: boolean }) {
-  return <span className={dark ? 'mk dark' : 'mk'}>{code}</span>;
+/** A group's name as a small tag; ungrouped accounts show nothing. */
+export function GroupTag({ name, dark }: { name: string | null | undefined; dark?: boolean }) {
+  if (!name) return null;
+  return <span className={dark ? 'mk dark' : 'mk'} style={{ padding: '0 6px' }}>{name}</span>;
 }
 
 export function Chip({ tone = 'neutral', children }: { tone?: 'ok' | 'plan' | 'warn' | 'err' | 'neutral'; children: ReactNode }) {
@@ -71,8 +75,30 @@ export function AiHeader({ title, note, children }: { title: string; note?: stri
 
 export const fmtN = (n: number) => n.toLocaleString('en-US');
 
-const LANG: Record<string, string> = { 'zh-Hant-TW': '繁體中文', 'en-US': 'English', 'ja-JP': '日本語' };
-export const langName = (locale: string) => LANG[locale] ?? locale;
+// Zones offered for an account, as Buffer's channel settings offer a list. An account
+// already on another zone keeps it; the select adds its current value.
+const ZONES: Array<[string, string]> = [
+  ['Asia/Taipei', '台北'], ['Asia/Tokyo', '東京'], ['Asia/Seoul', '首爾'], ['Asia/Hong_Kong', '香港'], ['Asia/Shanghai', '上海'],
+  ['Asia/Singapore', '新加坡'], ['Asia/Kuala_Lumpur', '吉隆坡'], ['Asia/Bangkok', '曼谷'], ['Asia/Ho_Chi_Minh', '胡志明市'], ['Asia/Jakarta', '雅加達'],
+  ['Asia/Manila', '馬尼拉'], ['Asia/Kolkata', 'India'], ['Asia/Dubai', 'Dubai'], ['Australia/Sydney', 'Sydney'], ['Pacific/Auckland', 'Auckland'],
+  ['Europe/London', 'London'], ['Europe/Paris', 'Paris'], ['Europe/Berlin', 'Berlin'],
+  ['America/New_York', 'New York'], ['America/Chicago', 'Chicago'], ['America/Denver', 'Denver'], ['America/Los_Angeles', 'Los Angeles'], ['America/Sao_Paulo', 'São Paulo'],
+];
+
+/** "GMT+8" for a zone at a moment; offsets move with daylight saving, so never cache them. */
+function gmtOffset(timeZone: string, at: Date) {
+  return new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' }).formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? '';
+}
+
+/** A zone's short name, e.g. "台北"; unknown zones show their IANA city. */
+export const zoneName = (timeZone: string) => ZONES.find(([z]) => z === timeZone)?.[1] ?? timeZone.split('/').pop()!.replace(/_/g, ' ');
+
+/** Options for a time zone select, e.g. "台北（GMT+8）", including `current` if it is not listed. */
+export function zoneOptions(current?: string, at = new Date()) {
+  const ids = ZONES.map(([z]) => z);
+  if (current && !ids.includes(current)) ids.push(current);
+  return ids.map((id) => ({ id, label: `${zoneName(id)}（${gmtOffset(id, at)}）` }));
+}
 
 /** The current wall-clock time in a zone, e.g. "18:02". */
 export function localTime(timeZone: string, at = new Date()) {

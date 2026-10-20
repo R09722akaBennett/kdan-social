@@ -46,22 +46,21 @@ export function fakeFetch() {
   };
 }
 
-/** One workspace with a Taiwan market, a Facebook page, and a post scheduled for it. */
+/** One workspace with a Facebook page on Taipei time, and a post scheduled for it. */
 export async function seed(db: Db, opts: { publishing?: boolean; review?: 'approved' | 'pending'; accountStatus?: 'active' | 'expired'; runAt?: Date; media?: { url: string; alt?: string }[] } = {}) {
   const [ws] = await db.insert(schema.workspaces).values({ name: 'KDAN Mobile', publishingEnabled: opts.publishing ?? false }).returning();
-  const [market] = await db.insert(schema.markets).values({ workspaceId: ws!.id, code: 'TW', name: '台灣', locale: 'zh-Hant-TW', timeZone: 'Asia/Taipei' }).returning();
   const ref = { workspaceId: ws!.id, platform: 'facebook' as const, externalId: 'page-1' };
   const [account] = await db.insert(schema.connectedAccounts).values({
     ...ref,
-    marketId: market!.id,
+    timeZone: 'Asia/Taipei',
     name: 'KDAN Mobile 台灣',
     credentials: encrypt(JSON.stringify({ pageAccessToken: 'secret-page-token' }), KEY, accountContext(ref)),
     status: opts.accountStatus ?? 'active',
   }).returning();
   const [post] = await db.insert(schema.posts).values({ workspaceId: ws!.id, title: '雙十一預告' }).returning();
   const [variant] = await db.insert(schema.postVariants).values({
-    postId: post!.id, marketId: market!.id, platform: 'facebook', body: 'PDF Reader 全方案 5 折', media: opts.media ?? [], reviewStatus: opts.review ?? 'approved',
+    postId: post!.id, accountId: account!.id, platform: 'facebook', body: 'PDF Reader 全方案 5 折', media: opts.media ?? [], reviewStatus: opts.review ?? 'approved',
   }).returning();
   const [task] = await db.insert(schema.publishTasks).values({ variantId: variant!.id, accountId: account!.id, runAt: opts.runAt ?? new Date('2026-10-20T12:00:00Z') }).returning();
-  return { ws: ws!, market: market!, account: account!, post: post!, variant: variant!, task: task! };
+  return { ws: ws!, account: account!, post: post!, variant: variant!, task: task! };
 }

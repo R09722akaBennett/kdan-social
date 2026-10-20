@@ -62,3 +62,13 @@ export function clockInZone(at: Date, timeZone: string): string {
 export function formatInZone(at: Date, timeZone: string): string {
   return `${dayInZone(at, timeZone)} ${clockInZone(at, timeZone)}`;
 }
+
+/**
+ * Check that `timeZone` is an IANA zone this runtime knows.
+ *
+ * Raises:
+ *   RangeError: the zone is unknown.
+ */
+export function assertTimeZone(timeZone: string): void {
+  new Intl.DateTimeFormat('en-US', { timeZone });
+}

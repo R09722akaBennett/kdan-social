@@ -35,6 +35,10 @@ export const workspaces = pgTable('workspaces', {
   name: text('name').notNull(),
   // Off by default: a new workspace only records what it would publish until someone turns this on.
   publishingEnabled: boolean('publishing_enabled').notNull().default(false),
+  // The clock the workspace is shown in, and the zone new accounts start with.
+  timeZone: text('time_zone').notNull().default('Asia/Taipei'),
+  // Posts by editors wait for an owner or admin before they go out.
+  requiresReview: boolean('requires_review').notNull().default(true),
   createdAt: createdAt(),
 });
 
@@ -67,19 +71,19 @@ export const metaConnectSessions = pgTable('meta_connect_sessions', {
   createdAt: createdAt(),
 });
 
-export const markets = pgTable(
-  'markets',
+/**
+ * A customer-named set of accounts that are usually posted to together, such as a
+ * country, a sub-brand or a store. Groups only select accounts; they own no content.
+ */
+export const accountGroups = pgTable(
+  'account_groups',
   {
     id: id(),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-    code: text('code').notNull(),
     name: text('name').notNull(),
-    locale: text('locale').notNull(),
-    timeZone: text('time_zone').notNull(),
-    requiresReview: boolean('requires_review').notNull().default(true),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('markets_workspace_code').on(t.workspaceId, t.code)],
+  (t) => [uniqueIndex('groups_workspace_name').on(t.workspaceId, t.name)],
 );
 
 export const connectedAccounts = pgTable(
@@ -87,7 +91,10 @@ export const connectedAccounts = pgTable(
   {
     id: id(),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-    marketId: uuid('market_id').notNull().references(() => markets.id),
+    // At most one group per account; deleting the group leaves the account ungrouped.
+    groupId: uuid('group_id').references(() => accountGroups.id, { onDelete: 'set null' }),
+    // "Local time" schedules run on this account's clock.
+    timeZone: text('time_zone').notNull(),
     platform: platform('platform').notNull(),
     externalId: text('external_id').notNull(),
     name: text('name').notNull(),
@@ -116,14 +123,15 @@ export const postVariants = pgTable(
   {
     id: id(),
     postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
-    marketId: uuid('market_id').notNull().references(() => markets.id),
+    // One variant per account, so each account can carry its own text.
+    accountId: uuid('account_id').notNull().references(() => connectedAccounts.id),
     platform: platform('platform').notNull(),
     body: text('body').notNull(),
     media: jsonb('media').$type<MediaItem[]>().notNull().default([]),
     reviewStatus: reviewStatus('review_status').notNull().default('draft'),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('variants_post_market_platform').on(t.postId, t.marketId, t.platform)],
+  (t) => [uniqueIndex('variants_post_account').on(t.postId, t.accountId)],
 );
 
 export const publishTasks = pgTable(

@@ -7,7 +7,7 @@ export default async function Page() {
       <header className="page-head">
         <div>
           <h1>待審核</h1>
-          <div className="sub">每個市場的版本由各自的負責人核准；全部核准後才會進排程。</div>
+          <div className="sub">編輯送出的貼文，由擁有者或管理員核准後才會進排程。一篇貼文核准一次，涵蓋它的所有帳號。</div>
         </div>
       </header>
       <div className="card card-pad stack" style={{ gap: 6 }}>
