@@ -109,6 +109,14 @@ select status_code, content, created from net._http_response order by created de
 
 暫停：`select cron.unschedule('kdan-social-dispatch');`
 
+## LINE
+
+- 客戶在 `/app/connect/line` 貼上 Messaging API channel 的 Channel ID 與 Channel secret；
+  保存前會用它們換一次 token 並讀官方帳號名稱，錯的不會存。不需要 webhook。
+- 發文是 broadcast：推播給**全部好友**，每位收到的好友扣 1 則額度（不論訊息有幾段）。
+  驗證真實發送一定要用**只有自己是好友的測試官方帳號**，不要用正式帳號。
+- 額度用完時 LINE 回 429，系統直接標為失敗、不重試（要到下個月才會恢復）。
+
 ## 注意
 
 - pg_cron 不會補跑也不會重試；漏掉的那分鐘，任務會在下一分鐘被撈到，所以不影響正確性，只會晚一分鐘。
