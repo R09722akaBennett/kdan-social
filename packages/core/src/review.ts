@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { notify } from './notifications';
 import { accountGroups, accountPosts, auditLog, connectedAccounts, postComments, postVariants, posts, publishTasks, type Db } from './db/index';
 
 /** A review action refused; the message is shown to the user as is. */
@@ -145,6 +146,9 @@ export async function decidePost(db: Db, a: { workspaceId: string; postId: strin
       workspaceId: a.workspaceId, actor: a.actor, action: a.decision === 'approve' ? 'post.approved' : 'post.changes_requested',
       target: post.id, detail: { title: post.title, ...(comment ? { comment } : {}) },
     });
+    await notify(tx, a.decision === 'approve'
+      ? { workspaceId: a.workspaceId, kind: 'review.approved', title: `「${post.title}」已核准`, body: comment || null, href: `/app/posts/${post.id}`, emails: [post.createdBy], actor: a.actor }
+      : { workspaceId: a.workspaceId, kind: 'review.changes_requested', title: `${a.actor} 要求修改「${post.title}」`, body: comment, href: `/app/approvals?post=${post.id}`, emails: [post.createdBy], actor: a.actor });
     return { state: status as ReviewState };
   });
 }
@@ -159,7 +163,13 @@ export async function commentOnPost(db: Db, a: { workspaceId: string; postId: st
   const body = a.body.trim();
   if (!body) throw new ReviewError('留言是空的。');
   if (body.length > COMMENT_MAX) throw new ReviewError(`留言最多 ${COMMENT_MAX} 字。`);
-  const [post] = await db.select({ id: posts.id }).from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
+  const [post] = await db.select({ id: posts.id, title: posts.title, createdBy: posts.createdBy }).from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
   if (!post) throw new ReviewError('找不到這篇貼文，請重新整理後再試。');
+  const earlier = await db.selectDistinct({ author: postComments.author }).from(postComments).where(eq(postComments.postId, post.id));
   await db.insert(postComments).values({ postId: post.id, author: a.actor, body });
+  // The author and everyone already in the thread hear about new replies.
+  await notify(db, {
+    workspaceId: a.workspaceId, kind: 'post.commented', title: `${a.actor} 在「${post.title}」留言`, body, href: `/app/approvals?post=${post.id}`,
+    emails: [post.createdBy, ...earlier.map((c) => c.author)], actor: a.actor,
+  });
 }

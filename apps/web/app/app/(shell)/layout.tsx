@@ -1,4 +1,4 @@
-import { listAccounts, listGroups, overviewCounts } from '@kdan-social/core';
+import { listAccounts, listGroups, overviewCounts, unreadCount } from '@kdan-social/core';
 import type { ReactNode } from 'react';
 import { AppShell, NavLinks, type NavItem } from '@/components/AppShell';
 import { Icon } from '@/components/ui';
@@ -12,10 +12,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const db = getDb();
   const ws = membership.workspace;
-  const [groups, accounts, counts] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id })]);
+  const [groups, accounts, counts, unread] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id })]);
   const expired = accounts.filter((a) => a.status !== 'active');
   const nav: NavItem[] = [
     { href: '/app', label: '總覽', icon: 'home' },
+    { href: '/app/notifications', label: '通知', icon: 'bell', badge: { n: unread, bg: 'var(--accent-soft)', fg: 'var(--accent)' } },
     { href: '/app/calendar', label: '行事曆', icon: 'calendar' },
     { href: '/app/approvals', label: '待審核', icon: 'check', badge: { n: counts.pendingReview.posts, bg: 'var(--warn-soft)', fg: 'var(--warn)' } },
     { href: '/app/assistant', label: 'AI 助理', icon: 'spark' },

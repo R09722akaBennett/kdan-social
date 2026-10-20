@@ -219,6 +219,23 @@ export const auditLog = pgTable(
   (t) => [index('audit_workspace_at').on(t.workspaceId, t.at)],
 );
 
+// One row per recipient, so each member reads and clears their own copy.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull(),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    href: text('href'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
+);
+
 export type GlossaryEntry = { term: string; rule: string };
 
 /** How the workspace writes. AI prompts are built from this; the composer checks `banned` itself. */

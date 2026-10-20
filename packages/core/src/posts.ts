@@ -11,6 +11,7 @@ import {
   type MediaItem,
 } from './db/index';
 import { zonedTimeToUtc } from './time';
+import { notify } from './notifications';
 
 /** A validation failure whose message is shown to the user as is. */
 export class ComposeError extends Error {}
@@ -88,6 +89,10 @@ function runAtsFor(accounts: Account[], schedule: Schedule, viewerTimeZone: stri
 
 const titleOf = (c: Content) => (c.body.trim().split('\n')[0] ?? '').slice(0, 40) || (c.media.length ? '（只有圖片）' : '（無標題）');
 
+function notifyReviewers(db: Db, workspaceId: string, postId: string, title: string, actor: string) {
+  return notify(db, { workspaceId, kind: 'review.requested', managers: true, actor, title: `${actor} 送出「${title}」等待審核`, href: `/app/approvals?post=${postId}` });
+}
+
 /**
  * Create a post with one version and one publish task per account.
  *
@@ -135,6 +140,7 @@ export async function createPost(db: Db, input: ComposeInput) {
       target: post!.id,
       detail: { title: post!.title, accounts: rows.length, customised: accounts.filter((a) => input.perAccount?.[a.id] !== undefined).length, schedule: input.schedule.mode },
     });
+    if (!approved) await notifyReviewers(tx, input.workspaceId, post!.id, post!.title, input.actor);
     return { postId: post!.id, tasks: rows.length };
   });
 }
@@ -188,6 +194,7 @@ export async function updatePost(db: Db, input: UpdateInput) {
       workspaceId: input.workspaceId, actor: input.actor, action: 'post.edited', target: row.post.id,
       detail: { title: titleOf(input), schedule: input.schedule.mode, review: approved ? 'approved' : 'pending' },
     });
+    if (!approved) await notifyReviewers(tx, input.workspaceId, row.post.id, titleOf(input), input.actor);
     return { postId: row.post.id, approved };
   });
 }

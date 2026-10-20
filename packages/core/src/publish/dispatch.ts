@@ -9,6 +9,7 @@ import {
   workspaces,
   type Db,
 } from '../db/index';
+import { notify, notifyExpired } from '../notifications';
 import { PlatformError } from '../platforms/http';
 import type { LineClient } from '../platforms/line';
 import type { FacebookCredentials, PlatformClient } from '../platforms/types';
@@ -105,6 +106,12 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
       target: taskId,
       detail: { post: post.title, account: account.name, platform: account.platform, ...fields },
     });
+    if (status === 'failed' || status === 'needs_check' || status === 'missed') {
+      const title = status === 'failed' ? `「${post.title}」沒有發到 ${account.name}`
+        : status === 'needs_check' ? `「${post.title}」發到 ${account.name} 的結果不確定`
+        : `「${post.title}」沒有在排定時間前核准，${account.name} 已略過`;
+      await notify(db, { workspaceId: workspace.id, kind: `publish.${status}`, title, body: fields.lastError, href: `/app/posts/${post.id}`, emails: [post.createdBy], managers: true });
+    }
     return status;
   };
 
@@ -124,8 +131,10 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
     return finish('dry_run');
   }
 
-  const expire = (detail: string) =>
-    db.update(connectedAccounts).set({ status: 'expired', statusDetail: detail, lastCheckedAt: now }).where(eq(connectedAccounts.id, account.id));
+  const expire = async (detail: string) => {
+    await db.update(connectedAccounts).set({ status: 'expired', statusDetail: detail, lastCheckedAt: now }).where(eq(connectedAccounts.id, account.id));
+    await notifyExpired(db, workspace.id, account.name);
+  };
 
   let credentials: unknown;
   try {

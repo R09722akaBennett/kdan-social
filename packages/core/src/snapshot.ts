@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import { accountContext, decrypt } from './crypto';
 import { accountDailyMetrics, accountPosts, audienceBreakdowns, connectedAccounts, followerSnapshots, postMetrics, publishTasks, type Db } from './db/index';
+import { notifyExpired } from './notifications';
 import { PlatformError } from './platforms/http';
 import { lineInsightDay } from './platforms/line';
 import type { InsightIssue, PlatformClient } from './platforms/types';
@@ -42,6 +43,7 @@ export async function snapshotFollowers(opts: { db: Db; clients: Clients; key: B
       if (e instanceof PlatformError && e.kind === 'auth') {
         await db.update(connectedAccounts).set({ status: 'expired', statusDetail: e.message, lastCheckedAt: now }).where(eq(connectedAccounts.id, a.id));
         log(`Account ${a.name} (${a.platform}) authorization expired: ${e.message}`);
+        await notifyExpired(db, a.workspaceId, a.name);
         summary.expired++;
       } else {
         log(`Follower snapshot failed for ${a.name} (${a.platform}): ${e instanceof Error ? e.message : String(e)}`);

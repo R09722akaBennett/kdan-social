@@ -1,6 +1,6 @@
 'use server';
 
-import { AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -293,4 +293,19 @@ export async function cancelPostAction(formData: FormData) {
   }
   revalidatePath('/app', 'layout');
   redirect(`/app/posts/${postId}?notice=${encodeURIComponent('已取消排程，還沒發出的帳號不會再發')}`);
+}
+
+export async function openNotificationAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  const href = await markRead(getDb(), { workspaceId: workspace.id, userId: user.id, id: String(formData.get('id')) });
+  revalidatePath('/app', 'layout');
+  // Only follow links into the app; a stored link is never sent off-site.
+  redirect(href?.startsWith('/app') ? href : '/app/notifications');
+}
+
+export async function markAllReadAction() {
+  const { user, workspace } = await requireWorkspace();
+  await markRead(getDb(), { workspaceId: workspace.id, userId: user.id });
+  revalidatePath('/app', 'layout');
+  redirect('/app/notifications');
 }
