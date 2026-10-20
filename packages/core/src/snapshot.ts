@@ -1,6 +1,6 @@
-import { and, eq, gte, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import { accountContext, decrypt } from './crypto';
-import { connectedAccounts, followerSnapshots, postMetrics, publishTasks, type Db } from './db/index';
+import { accountPosts, connectedAccounts, followerSnapshots, postMetrics, publishTasks, type Db } from './db/index';
 import { PlatformError } from './platforms/http';
 import { lineInsightDay } from './platforms/line';
 import type { PlatformClient } from './platforms/types';
@@ -79,6 +79,44 @@ export async function collectPostMetrics(opts: { db: Db; clients: Clients; key: 
       summary.saved++;
     } catch (e) {
       log(`Post metrics failed for task ${task.id} on ${account.platform} ${account.name}: ${e instanceof Error ? e.message : String(e)}`);
+      summary.failed++;
+    }
+  }
+  return summary;
+}
+
+export type ImportSummary = { accounts: number; posts: number; failed: number };
+/** How far back an account's own posts are read, on connect and every day after. */
+export const IMPORT_WINDOW_DAYS = 60;
+
+/**
+ * Read the last 60 days of posts from Facebook and Instagram accounts, whoever published
+ * them, and store them with their current numbers. Re-reading updates the numbers.
+ *
+ * Args:
+ *   accountIds: only these accounts, as right after connecting; all active ones otherwise.
+ */
+export async function importAccountPosts(opts: { db: Db; clients: Clients; key: Buffer; accountIds?: string[]; now?: Date; log?: (line: string) => void }): Promise<ImportSummary> {
+  const { db, log = () => {} } = opts;
+  const now = opts.now ?? new Date();
+  const since = new Date(now.getTime() - IMPORT_WINDOW_DAYS * 86_400_000);
+  const summary: ImportSummary = { accounts: 0, posts: 0, failed: 0 };
+  const accounts = await db.select().from(connectedAccounts)
+    .where(and(eq(connectedAccounts.status, 'active'), inArray(connectedAccounts.platform, ['facebook', 'instagram']), opts.accountIds ? inArray(connectedAccounts.id, opts.accountIds) : undefined));
+  for (const a of accounts) {
+    try {
+      const credentials = JSON.parse(decrypt(a.credentials, opts.key, accountContext(a)));
+      const client = opts.clients[a.platform] as PlatformClient<unknown>;
+      const posts = (await client.recentPosts?.({ externalId: a.externalId, credentials }, since)) ?? [];
+      for (const p of posts) {
+        const values = { publishedAt: p.publishedAt, text: p.text.slice(0, 2000), permalink: p.permalink, mediaType: p.mediaType, engagements: p.metrics.engagements, detail: p.metrics.detail, fetchedAt: now };
+        await db.insert(accountPosts).values({ accountId: a.id, externalId: p.externalId, ...values })
+          .onConflictDoUpdate({ target: [accountPosts.accountId, accountPosts.externalId], set: values });
+      }
+      summary.accounts++;
+      summary.posts += posts.length;
+    } catch (e) {
+      log(`Post import failed for ${a.name} (${a.platform}): ${e instanceof Error ? e.message : String(e)}`);
       summary.failed++;
     }
   }

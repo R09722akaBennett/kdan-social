@@ -1,10 +1,11 @@
 'use server';
 
-import { AccessError, AiError, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { AccessError, AiError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/auth';
-import { getDb } from '@/lib/server';
+import { deps, getDb } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
 // Server actions are public endpoints: every one re-checks the session and workspace
@@ -37,6 +38,13 @@ export async function saveMetaConnection(formData: FormData) {
     if (e instanceof AccessError) redirect('/app?notice=meta_expired');
     throw e;
   }
+  // Read the new accounts' last 60 days of posts once the response is out, so analytics
+  // has history right away instead of after the first nightly run.
+  after(async () => {
+    const ids = (await listAccounts(getDb(), workspace.id)).filter((a) => a.platform !== 'line' && a.status === 'active').map((a) => a.id);
+    const summary = await importAccountPosts({ ...deps(), accountIds: ids, log: (line) => console.log(line) });
+    console.log(`Imported ${summary.posts} post(s) from ${summary.accounts} account(s) after connecting, ${summary.failed} failed`);
+  });
   revalidatePath('/app');
   redirect(`/app?notice=connected&n=${connected}`);
 }

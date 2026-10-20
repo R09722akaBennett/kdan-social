@@ -1,5 +1,5 @@
 import { classifyGraph, form, PlatformError, request, type FetchFn } from './http';
-import type { AccountRef, FacebookCredentials, PlatformClient, PostMetrics, PublishInput, PublishResult } from './types';
+import type { AccountPost, AccountRef, FacebookCredentials, PlatformClient, PostMetrics, PublishInput, PublishResult } from './types';
 
 // Pin the Graph version so a Meta release cannot change behaviour under us; bump deliberately.
 export const GRAPH_VERSION = 'v25.0';
@@ -21,6 +21,20 @@ function graph(fetchFn: FetchFn, platform: 'facebook' | 'instagram') {
         idempotent,
         classify: classifyGraph,
       })).body as Record<string, unknown>,
+    /** Follow a list's `paging.next` until `keep` returns false for an item or the list ends. */
+    list: async (path: string, token: string, params: Record<string, string | number>, keep: (item: Record<string, unknown>) => boolean, maxPages = 10) => {
+      const items: Array<Record<string, unknown>> = [];
+      let url: string | undefined = `${GRAPH}/${path}?${form({ ...params, access_token: token })}`;
+      for (let page = 0; url && page < maxPages; page++) {
+        const res = (await request(fetchFn, platform, url, { method: 'GET', idempotent: true, classify: classifyGraph })).body as { data?: Array<Record<string, unknown>>; paging?: { next?: string } };
+        const data = res.data ?? [];
+        const kept = data.filter(keep);
+        items.push(...kept);
+        // Both lists are newest first, so the first old item means the rest are older too.
+        url = kept.length < data.length ? undefined : res.paging?.next;
+      }
+      return items;
+    },
     get: async (path: string, token: string, fields: string) =>
       (await request(fetchFn, platform, `${GRAPH}/${path}?${form({ fields, access_token: token })}`, {
         method: 'GET',
@@ -67,6 +81,18 @@ export function facebookClient(fetchFn: FetchFn = fetch): PlatformClient<Faceboo
       const detail = { reactions: summary(res.reactions), comments: summary(res.comments), // Graph omits `shares` entirely when nobody has shared the post.
       shares: num((res.shares as { count?: unknown } | undefined)?.count) ?? 0 };
       return { engagements: total(Object.values(detail)), detail };
+    },
+    async recentPosts(account, since): Promise<AccountPost[]> {
+      const items = await g.list(`${account.externalId}/published_posts`, account.credentials.pageAccessToken, {
+        fields: 'id,message,created_time,permalink_url,status_type,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares',
+        since: Math.floor(since.getTime() / 1000),
+        limit: 50,
+      }, (p) => new Date(String(p.created_time)).getTime() >= since.getTime());
+      return items.map((p) => {
+        const summary = (v: unknown) => num((v as { summary?: { total_count?: unknown } } | undefined)?.summary?.total_count);
+        const detail = { reactions: summary(p.reactions), comments: summary(p.comments), shares: num((p.shares as { count?: unknown } | undefined)?.count) ?? 0 };
+        return { externalId: String(p.id), publishedAt: new Date(String(p.created_time)), text: String(p.message ?? ''), permalink: typeof p.permalink_url === 'string' ? p.permalink_url : null, mediaType: typeof p.status_type === 'string' ? p.status_type : null, metrics: { engagements: total(Object.values(detail)), detail } };
+      });
     },
   };
 }
@@ -122,6 +148,16 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
       const res = await g.get(mediaId, account.credentials.pageAccessToken, 'like_count,comments_count');
       const detail = { likes: num(res.like_count), comments: num(res.comments_count) };
       return { engagements: total(Object.values(detail)), detail };
+    },
+    async recentPosts(account, since): Promise<AccountPost[]> {
+      const items = await g.list(`${account.externalId}/media`, account.credentials.pageAccessToken, {
+        fields: 'id,caption,media_type,permalink,timestamp,like_count,comments_count',
+        limit: 50,
+      }, (m) => new Date(String(m.timestamp)).getTime() >= since.getTime());
+      return items.map((m) => {
+        const detail = { likes: num(m.like_count), comments: num(m.comments_count) };
+        return { externalId: String(m.id), publishedAt: new Date(String(m.timestamp)), text: String(m.caption ?? ''), permalink: typeof m.permalink === 'string' ? m.permalink : null, mediaType: typeof m.media_type === 'string' ? m.media_type : null, metrics: { engagements: total(Object.values(detail)), detail } };
+      });
     },
   };
 }

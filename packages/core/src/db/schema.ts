@@ -247,3 +247,24 @@ export const postMetrics = pgTable('post_metrics', {
   detail: jsonb('detail').$type<Record<string, number | null>>().notNull().default({}),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Posts read back from an account, including ones published outside kdan-social, so
+ * analytics covers everything the account posted. Refreshed daily for 60 days.
+ */
+export const accountPosts = pgTable(
+  'account_posts',
+  {
+    id: id(),
+    accountId: uuid('account_id').notNull().references(() => connectedAccounts.id, { onDelete: 'cascade' }),
+    externalId: text('external_id').notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull(),
+    text: text('text').notNull().default(''),
+    permalink: text('permalink'),
+    mediaType: text('media_type'),
+    engagements: integer('engagements'),
+    detail: jsonb('detail').$type<Record<string, number | null>>().notNull().default({}),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('account_posts_account_external').on(t.accountId, t.externalId), index('account_posts_published').on(t.publishedAt)],
+);

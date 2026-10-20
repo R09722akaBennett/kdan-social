@@ -1,4 +1,4 @@
-import { aiConfigured, followerSeries, formatInZone, listAccounts, listGroups, postPerformance } from '@kdan-social/core';
+import { aiConfigured, followerSeries, formatInZone, IMPORT_WINDOW_DAYS, listAccounts, listGroups, performanceRows } from '@kdan-social/core';
 import type { CSSProperties } from 'react';
 import { FilterMenu } from '@/components/groups';
 import { InsightsButton } from '@/components/insights';
@@ -38,7 +38,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     followerSeries(db, { workspaceId: workspace.id, days, now }),
-    postPerformance(db, { workspaceId: workspace.id, from: new Date(now.getTime() - days * 86_400_000), groupIds }),
+    performanceRows(db, { workspaceId: workspace.id, from: new Date(now.getTime() - days * 86_400_000), groupIds }),
   ]);
   const shown = accounts.filter((a) => filter.length === 0 || filter.includes(a.groupId ?? 'none'));
   const groupName = (id: string | null) => groups.find((g) => g.id === id)?.name ?? null;
@@ -100,7 +100,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <section className="card" aria-labelledby="h-posts">
         <div className="card-head">
           <h2 id="h-posts">貼文成效</h2>
-          <span className="small muted">每個帳號分列；互動：FB 心情＋留言＋分享、IG 讚＋留言、LINE 點擊</span>
+          <span className="small muted">每個帳號分列，含直接在平台上發的貼文（FB、IG 近 {IMPORT_WINDOW_DAYS} 天）；互動：FB 心情＋留言＋分享、IG 讚＋留言、LINE 點擊</span>
         </div>
         <div className="table-wrap">
           <table style={{ minWidth: 860 }}>
@@ -111,8 +111,11 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
                 const followers = latest(p.accountId);
                 const rate = p.engagements != null && followers ? `${((p.engagements / followers) * 100).toFixed(2)}%` : '—';
                 return (
-                  <tr key={p.taskId}>
-                    <td>{p.title}</td>
+                  <tr key={p.key}>
+                    <td>
+                      {p.permalink ? <a href={p.permalink} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{p.title}</a> : p.title}
+                      {p.source === 'platform' && <span className="mk" style={{ marginLeft: 6, padding: '0 6px' }} title="直接在平台上發的，不是透過 kdan-social">平台發布</span>}
+                    </td>
                     <td><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><Pf pf={p.platform} size="sm" />{p.account}</span></td>
                     <td className="num small">{p.publishedAt ? formatInZone(p.publishedAt, workspace.timeZone) : '—'}</td>
                     <td className="right num" title={p.detail ? Object.entries(p.detail).map(([k, v]) => `${k} ${v ?? '—'}`).join('、') : '明天會更新'}>{p.engagements != null ? fmtN(p.engagements) : p.fetchedAt ? '—' : '待更新'}</td>

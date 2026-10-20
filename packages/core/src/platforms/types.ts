@@ -23,6 +23,9 @@ export type PublishResult = { externalPostId: string };
  */
 export type PostMetrics = { engagements: number | null; opens?: number | null; detail: Record<string, number | null> };
 
+/** A post found on the account itself, whoever published it, with its numbers at the time it was read. */
+export type AccountPost = { externalId: string; publishedAt: Date; text: string; permalink: string | null; mediaType: string | null; metrics: PostMetrics };
+
 export interface PlatformClient<C = Credentials> {
   readonly platform: Platform;
   /**
@@ -36,4 +39,6 @@ export interface PlatformClient<C = Credentials> {
   followers(account: AccountRef<C>, now: Date): Promise<number | null>;
   /** The post's numbers so far, read with the same credentials it was published with. */
   metrics(account: AccountRef<C>, externalPostId: string): Promise<PostMetrics>;
+  /** Posts published on the account since `since`, newest first; absent where the platform has no such list. */
+  recentPosts?(account: AccountRef<C>, since: Date): Promise<AccountPost[]>;
 }

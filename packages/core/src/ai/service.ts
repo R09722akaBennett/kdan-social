@@ -2,7 +2,7 @@ import { and, eq, gt, sql } from 'drizzle-orm';
 import { accountGroups, auditLog, connectedAccounts, type Db } from '../db/index';
 import { getGroupVoices, getVoice, normaliseVoice, type GroupVoice, type Voice } from '../voice';
 import { AiError, write, type Writer } from './writer';
-import { followerSeries, postPerformance } from '../analytics';
+import { followerSeries, performanceRows } from '../analytics';
 import type { GroupFilter } from '../overview';
 import { adaptPrompt, BASE_SYSTEM, insightsPrompt, INSIGHTS_SYSTEM, rewritePrompt, samplePrompt, voiceAddendum, type RewriteAction } from './prompts';
 
@@ -89,7 +89,7 @@ export async function aiInsights(db: Db, writer: Writer, a: { workspaceId: strin
   const now = a.now ?? new Date();
   const [series, perf, accounts] = await Promise.all([
     followerSeries(db, { workspaceId: a.workspaceId, days: a.days, now }),
-    postPerformance(db, { workspaceId: a.workspaceId, from: new Date(now.getTime() - a.days * 86_400_000), groupIds: a.groupIds, limit: 60 }),
+    performanceRows(db, { workspaceId: a.workspaceId, from: new Date(now.getTime() - a.days * 86_400_000), groupIds: a.groupIds, limit: 60 }),
     db.select({ id: connectedAccounts.id, name: connectedAccounts.name, platform: connectedAccounts.platform, groupId: connectedAccounts.groupId, groupName: accountGroups.name }).from(connectedAccounts)
       .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId)).where(eq(connectedAccounts.workspaceId, a.workspaceId)),
   ]);
@@ -103,7 +103,7 @@ export async function aiInsights(db: Db, writer: Writer, a: { workspaceId: strin
     lines.push(`- ${acc.name} (${acc.platform}${acc.groupName ? `, group ${acc.groupName}` : ''}): ${s[0]!.followers} on ${s[0]!.day} -> ${s.at(-1)!.followers} on ${s.at(-1)!.day}`);
   }
   lines.push('', '# Published posts (engagements: FB reactions+comments+shares, IG likes+comments, LINE clicks; opens: LINE only)');
-  for (const p of perf) lines.push(`- ${p.publishedAt?.toISOString().slice(0, 16)} ${p.account} (${p.platform}): "${p.title}" engagements=${p.engagements ?? 'n/a'}${p.opens != null ? ` opens=${p.opens}` : ''}`);
+  for (const p of perf) lines.push(`- ${p.publishedAt?.toISOString().slice(0, 16)} ${p.account} (${p.platform}${p.source === 'platform' ? ', posted outside kdan-social' : ''}): "${p.title}" engagements=${p.engagements ?? 'n/a'}${p.opens != null ? ` opens=${p.opens}` : ''}`);
   if (!followerLines && !perf.length) throw new AiError('還沒有足夠的數字可以分析；粉絲數每天更新一次，發文後隔天會有互動數。');
   await guard(db, a.workspaceId, 'x');
   const out = await writer({ system: INSIGHTS_SYSTEM, prompt: insightsPrompt(lines.join('\n'), a.days) });
