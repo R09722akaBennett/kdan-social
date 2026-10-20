@@ -31,7 +31,7 @@
 - [ ] 每日粉絲數快照
 - [x] 登入（Email 連結）與工作區；新工作區目前用 `workspace:bootstrap` 腳本建立
 - [x] 帳號群組與帳號時區的設定畫面
-- [ ] 成員邀請的畫面
+- [x] 成員邀請的畫面（目前不寄信，邀請後把登入連結給對方）
 - [x] 部署到 Vercel（https://kdan-social.vercel.app，Supabase Cron 每分鐘觸發派送）
 - [ ] 錄 App Review 操作影片並送審
 
