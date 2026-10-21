@@ -245,6 +245,31 @@ export const notifications = pgTable(
   (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
 );
 
+export const tagColor = pgEnum('tag_color', ['blue', 'green', 'orange', 'purple', 'pink', 'teal', 'gray']);
+
+// Labels a workspace defines for its posts, after Buffer's tags; a color name, not a code,
+// so the page keeps them readable in both themes.
+export const tags = pgTable(
+  'tags',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: tagColor('color').notNull().default('blue'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('tags_workspace_name').on(t.workspaceId, sql`lower(${t.name})`)],
+);
+
+export const postTags = pgTable(
+  'post_tags',
+  {
+    postId: uuid('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+    tagId: uuid('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.tagId] }), index('post_tags_tag').on(t.tagId)],
+);
+
 export const ideaStatus = pgEnum('idea_status', ['unassigned', 'todo', 'in_progress', 'done']);
 
 // Content not yet written as a post, on a board the whole workspace shares, after Buffer's Ideas.

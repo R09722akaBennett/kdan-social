@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { connectedAccounts, postVariants, posts, publishTasks, type Db } from './db/index';
 import { listDrafts } from './posts';
+import { inTags, type TagFilter } from './tags';
 
 export type ChannelTab = 'queue' | 'drafts' | 'approvals' | 'sent';
 
@@ -55,7 +56,7 @@ export type ChannelItem = {
  * The posts in one tab of an account's page, with this account's own text: soonest first
  * for what is still to come, newest first for drafts and for the last 50 sent.
  */
-export async function channelItems(db: Db, a: { workspaceId: string; accountId: string; tab: ChannelTab }): Promise<ChannelItem[]> {
+export async function channelItems(db: Db, a: { workspaceId: string; accountId: string; tab: ChannelTab; tagIds?: TagFilter }): Promise<ChannelItem[]> {
   if (a.tab === 'drafts') {
     const drafts = await listDrafts(db, a);
     return drafts.map(({ post, versions }) => {
@@ -73,7 +74,7 @@ export async function channelItems(db: Db, a: { workspaceId: string; accountId: 
     .from(publishTasks)
     .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
     .innerJoin(posts, eq(posts.id, postVariants.postId))
-    .where(and(eq(posts.workspaceId, a.workspaceId), eq(publishTasks.accountId, a.accountId), TABS[a.tab]))
+    .where(and(eq(posts.workspaceId, a.workspaceId), eq(publishTasks.accountId, a.accountId), TABS[a.tab], inTags(db, a.tagIds)))
     .orderBy(sent ? desc(publishTasks.runAt) : asc(publishTasks.runAt));
   return sent ? q.limit(SENT_LIMIT) : q;
 }

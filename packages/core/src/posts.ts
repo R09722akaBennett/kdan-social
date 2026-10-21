@@ -12,6 +12,7 @@ import {
 } from './db/index';
 import { zonedTimeToUtc } from './time';
 import { notify } from './notifications';
+import { inTags, setPostTags, type TagFilter } from './tags';
 
 /** A validation failure whose message is shown to the user as is. */
 export class ComposeError extends Error {}
@@ -31,6 +32,8 @@ export type ComposeInput = {
   media: MediaItem[];
   /** Left under the post once it is out on Facebook and Instagram; LINE accounts ignore it. */
   firstComment?: string;
+  /** The post's tags; omitted keeps the ones it has. */
+  tagIds?: string[];
   schedule: Schedule;
   /** The zone a `same` schedule is read in; the person scheduling's own clock. */
   viewerTimeZone?: string;
@@ -151,6 +154,7 @@ export async function createPost(db: Db, input: ComposeInput) {
       }).returning();
       await tx.insert(publishTasks).values({ variantId: v!.id, accountId: account.id, runAt: runAts.get(account.id)! });
     }
+    if (input.tagIds) await setPostTags(tx, { workspaceId: input.workspaceId, postId: post!.id, tagIds: input.tagIds });
     await tx.insert(auditLog).values({
       workspaceId: input.workspaceId,
       actor: input.actor,
@@ -217,19 +221,20 @@ export async function saveDraft(db: Db, input: DraftInput) {
     await tx.insert(postVariants).values(accounts.map((account) => ({
       postId: post.id, accountId: account.id, platform: account.platform, body: textFor(input, account.id), media: input.media, reviewStatus: 'draft' as const,
     })));
+    if (input.tagIds) await setPostTags(tx, { workspaceId: input.workspaceId, postId: post.id, tagIds: input.tagIds });
     await tx.insert(auditLog).values({ workspaceId: input.workspaceId, actor: input.actor, action: 'post.drafted', target: post.id, detail: { title: post.title, accounts: accounts.length } });
     return { postId: post.id };
   });
 }
 
-/** Drafts, newest first, each with its accounts; only those for `accountId` when given. */
-export async function listDrafts(db: Db, a: { workspaceId: string; accountId?: string }) {
+/** Drafts, newest first, each with its accounts; only those for `accountId` and `tagIds` when given. */
+export async function listDrafts(db: Db, a: { workspaceId: string; accountId?: string; tagIds?: TagFilter }) {
   const rows = await db
     .select({ post: posts, accountId: postVariants.accountId, platform: postVariants.platform, account: connectedAccounts.name, body: postVariants.body, media: postVariants.media })
     .from(postVariants)
     .innerJoin(posts, eq(posts.id, postVariants.postId))
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, postVariants.accountId))
-    .where(and(eq(posts.workspaceId, a.workspaceId), eq(postVariants.reviewStatus, 'draft')))
+    .where(and(eq(posts.workspaceId, a.workspaceId), eq(postVariants.reviewStatus, 'draft'), inTags(db, a.tagIds)))
     .orderBy(desc(posts.createdAt));
   const byPost = new Map<string, { post: typeof posts.$inferSelect; versions: Array<Omit<(typeof rows)[number], 'post'>> }>();
   for (const { post, ...v } of rows) {
@@ -282,6 +287,7 @@ export async function updatePost(db: Db, input: UpdateInput) {
     const approved = manager || !row.workspace.requiresReview;
 
     await tx.update(posts).set({ title: titleOf(input), body: input.body.trim(), firstComment: commentOf(input) }).where(eq(posts.id, row.post.id));
+    if (input.tagIds) await setPostTags(tx, { workspaceId: input.workspaceId, postId: row.post.id, tagIds: input.tagIds });
     for (const t of tasks) {
       await tx.update(postVariants).set({ body: textFor(input, t.account.id), media: input.media, reviewStatus: approved ? 'approved' : 'pending' }).where(eq(postVariants.id, t.variantId));
       // A retry already counted against the old content does not carry over.

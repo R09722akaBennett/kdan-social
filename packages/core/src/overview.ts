@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { accountGroups, connectedAccounts, followerSnapshots, postVariants, posts, publishTasks, type Db } from './db/index';
 import { zonedTimeToUtc } from './time';
+import { inTags, type TagFilter } from './tags';
 
 export type FollowerStat = { followers: number; day: string; delta7: number | null };
 
@@ -100,7 +101,7 @@ export type ScheduledTask = {
 };
 
 /** Tasks whose time falls in [from, to), oldest first, optionally for some groups. */
-export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: Date; groupIds?: GroupFilter; limit?: number; statuses?: ScheduledTask['status'][] }): Promise<ScheduledTask[]> {
+export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: Date; groupIds?: GroupFilter; tagIds?: TagFilter; limit?: number; statuses?: ScheduledTask['status'][] }): Promise<ScheduledTask[]> {
   const q = db
     .select({
       id: publishTasks.id,
@@ -127,6 +128,7 @@ export function tasksBetween(db: Db, a: { workspaceId: string; from: Date; to: D
     .where(and(
       eq(posts.workspaceId, a.workspaceId),
       inGroups(a.groupIds),
+      inTags(db, a.tagIds),
       gte(publishTasks.runAt, a.from),
       lt(publishTasks.runAt, a.to),
       a.statuses ? inArray(publishTasks.status, a.statuses) : undefined,

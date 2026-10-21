@@ -20,6 +20,7 @@ export * from './workspace';
 export * from './posts';
 export * from './channel';
 export * from './ideas';
+export * from './tags';
 export * from './time';
 export * from './overview';
 export * from './groups';
