@@ -4,14 +4,20 @@ import { redirect } from 'next/navigation';
 import { appUrl } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
-export async function sendLoginLink(formData: FormData) {
-  const email = String(formData.get('email') ?? '').trim();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) redirect('/login?error=email');
+/**
+ * Send the person to Facebook to sign in. Only their name and email are asked for:
+ * the email is how invites, notifications and the activity log know them, and Page
+ * access is a separate grant on the accounts page.
+ */
+export async function signInWithFacebook() {
   const supabase = await supabaseServer();
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${appUrl()}/auth/callback` } });
-  if (error) {
-    console.error(`Login link for ${email} failed: ${error.message}`);
-    redirect(`/login?error=${error.status === 429 ? 'rate' : 'send'}`);
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: { redirectTo: `${appUrl()}/auth/callback`, scopes: 'email' },
+  });
+  if (error || !data.url) {
+    console.error(`Facebook sign-in could not start: ${error?.message ?? 'no URL returned'}`);
+    redirect('/login?error=start');
   }
-  redirect(`/login?sent=${encodeURIComponent(email)}`);
+  redirect(data.url);
 }

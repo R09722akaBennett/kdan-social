@@ -39,7 +39,7 @@ export function InviteButton({ action }: { action: (f: FormData) => void }) {
                   </label>
                 ))}
               </fieldset>
-              <p className="tiny muted" style={{ margin: 0 }}>目前不會自動寄信。邀請後請把登入連結傳給對方，對方用這個 email 登入就會加入。</p>
+              <p className="tiny muted" style={{ margin: 0 }}>目前不會自動寄信。邀請後請把登入連結傳給對方，對方用 Email 是這個地址的 Facebook 帳號登入就會加入。</p>
             </div>
             <div className="row" style={{ padding: '14px 18px', justifyContent: 'flex-end', borderTop: '1px solid var(--line-soft)', marginTop: 14 }}>
               <button type="button" className="btn" onClick={() => setOpen(false)}>取消</button>

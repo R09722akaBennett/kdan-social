@@ -2,8 +2,7 @@ import { aiConfigured, aiUsage, globalPublishingEnabled, modelFor, publishingAll
 import { fmtN, zoneOptions } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { linkFacebookAction, togglePublishing, updateSettingsAction } from '@/app/app/actions';
-import { supabaseServer } from '@/lib/supabase';
+import { togglePublishing, updateSettingsAction } from '@/app/app/actions';
 
 // Sections after Buffer's General settings: one card per concern, each saved on its own.
 export default async function Settings({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -11,11 +10,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const manager = role === 'owner' || role === 'admin';
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
-  const [usage, auth] = await Promise.all([aiUsage(getDb(), { workspaceId: workspace.id, days: 30 }), (await supabaseServer()).auth.getUser()]);
-  const identities = auth.data.user?.identities ?? [];
-  const facebook = identities.find((i) => i.provider === 'facebook');
-  const fbName = typeof facebook?.identity_data?.name === 'string' ? facebook.identity_data.name : null;
-  const fbEmail = typeof facebook?.identity_data?.email === 'string' ? facebook.identity_data.email : null;
+  const usage = await aiUsage(getDb(), { workspaceId: workspace.id, days: 30 });
 
   return (
     <main className="main" style={{ maxWidth: 860 }}>
@@ -64,31 +59,6 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <button className={`btn ${workspace.publishingEnabled ? '' : 'btn-danger'}`} type="submit">{workspace.publishingEnabled ? '關閉工作區發文' : '開啟工作區發文'}</button>
           </form>
         ) : <span className="small muted">只有擁有者可以切換。</span>}
-      </section>
-
-      <section id="login" className="card" aria-labelledby="h-login">
-        <div className="card-head">
-          <div>
-            <h2 id="h-login">你的登入方式</h2>
-            <div className="small muted">只影響你自己的帳號。連結 Facebook 後，用 Email 或 Facebook 登入都會進到同一個帳號和同樣的工作區。</div>
-          </div>
-        </div>
-        <div className="list-row">
-          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>Email</div>
-            <div className="small muted">{auth.data.user?.email}</div>
-          </div>
-          <span className="small muted">邀請、通知與紀錄都用這個 Email 認你</span>
-        </div>
-        <div className="list-row">
-          <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>Facebook</div>
-            <div className="small muted">{facebook ? [fbName, fbEmail].filter(Boolean).join(' · ') || '已連結' : '還沒有連結'}</div>
-          </div>
-          {facebook
-            ? <span className="chip chip-ok">已連結</span>
-            : <form action={linkFacebookAction}><button type="submit" className="btn" style={{ background: 'var(--fb)', borderColor: 'var(--fb)', color: '#fff', fontWeight: 600 }}>連結 Facebook</button></form>}
-        </div>
       </section>
 
       <section className="card" aria-labelledby="h-ai">

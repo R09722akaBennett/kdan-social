@@ -67,14 +67,14 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         {canCreate ? (
           <CreateWorkspaceForm from="/app" />
         ) : (
-          <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁邀請 {user.email}，再重新登入。</div>
+          <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁邀請 {user.email}（你 Facebook 帳號的 Email），再重新整理這一頁。</div>
         )}
         <div className="card card-pad small stack" style={{ gap: 4, background: 'var(--ok-soft)', border: 0 }}>
           <strong style={{ fontWeight: 600 }}>接下來</strong>
           <span>· 你會是這個工作區的擁有者，可以邀請成員、管理所有設定</span>
           <span>· 總覽頁會有一份設定清單，帶你連結帳號、送測試貼文</span>
           <span>· 對外發文預設關閉，確認沒問題後再到設定開啟</span>
-          {!canCreate && <span>· 被邀請的話，用受邀的 email 登入就會自動加入</span>}
+          {!canCreate && <span>· 被邀請的話，用 Email 是受邀地址的 Facebook 帳號登入就會自動加入</span>}
         </div>
         <form action={signOut}><button className="btn btn-sm" type="submit">登出</button></form>
       </main>

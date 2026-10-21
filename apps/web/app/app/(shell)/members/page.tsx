@@ -58,7 +58,7 @@ export default async function Members({ searchParams }: { searchParams: Promise<
         <div className="card-head">
           <div>
             <h2 id="h-invites">待接受的邀請 <span className="small muted">{invites.length}</span></h2>
-            <div className="small muted">對方用受邀的 email 到登入頁登入，就會自動加入。</div>
+            <div className="small muted">對方用 Email 是受邀地址的 Facebook 帳號登入，就會自動加入。</div>
           </div>
         </div>
         {invites.length === 0 && <div className="list-row small muted">沒有待接受的邀請。</div>}
