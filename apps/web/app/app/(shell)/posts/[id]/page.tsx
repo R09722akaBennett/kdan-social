@@ -1,4 +1,5 @@
-import { formatInZone, reviewDetail } from '@kdan-social/core';
+import { formatInZone, reviewDetail, tagsForPosts } from '@kdan-social/core';
+import { TagPill } from '@/components/tags';
 import { notFound } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { ConfirmSubmit } from '@/components/confirm';
@@ -67,6 +68,7 @@ export default async function PostDetail({ params, searchParams }: { params: Pro
   const { user, workspace, role } = await requireWorkspace();
   const d = await reviewDetail(getDb(), { workspaceId: workspace.id, postId: id });
   if (!d) notFound();
+  const tags = (await tagsForPosts(getDb(), [d.post.id])).get(d.post.id) ?? [];
   const tz = workspace.timeZone;
   const manager = role === 'owner' || role === 'admin';
   const mine = manager || d.post.createdBy === user.email;
@@ -98,6 +100,7 @@ export default async function PostDetail({ params, searchParams }: { params: Pro
 
       <div className="row" style={{ gap: 8 }}>
         {cancelled ? <Chip tone="neutral">已取消</Chip> : <Chip tone={REVIEW[d.state]![0]}>{REVIEW[d.state]![1]}</Chip>}
+        {tags.map((t) => <TagPill key={t.id} tag={t} />)}
         {d.post.body !== null && <span className="small muted">主要文字：{d.post.body.split('\n')[0]?.slice(0, 60) || '（沒有文字）'}</span>}
       </div>
 

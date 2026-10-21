@@ -1,4 +1,4 @@
-import { aiConfigured, getIdea, getVoice, lineClient, lineUsage, listAccounts, listDrafts, listGroups, loadKey, planItem } from '@kdan-social/core';
+import { aiConfigured, getIdea, getVoice, lineClient, lineUsage, listAccounts, listDrafts, listGroups, listTags, loadKey, planItem, tagsForPosts } from '@kdan-social/core';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { supabaseEnv } from '@/lib/supabase';
@@ -17,11 +17,13 @@ export default async function NewPost({ searchParams }: { searchParams: Promise<
   const idea = sp.idea ? await getIdea(db, { workspaceId: workspace.id, id: sp.idea }) : null;
   const template = templateByKey(sp.template);
   const draft = sp.draft ? (await listDrafts(db, { workspaceId: workspace.id })).find((d) => d.post.id === sp.draft) : undefined;
-  const [groups, accounts, usage, voice] = await Promise.all([
+  const [groups, accounts, usage, voice, tags, draftTags] = await Promise.all([
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     lineUsage(db, loadKey(), lineClient(), { workspaceId: workspace.id }),
     getVoice(db, workspace.id),
+    listTags(db, workspace.id),
+    draft ? tagsForPosts(db, [draft.post.id]) : null,
   ]);
   return (
     <>
@@ -42,7 +44,9 @@ export default async function NewPost({ searchParams }: { searchParams: Promise<
           custom: Object.fromEntries(draft.versions.filter((v) => v.body !== (draft.post.body ?? '')).map((v) => [v.accountId, v.body])),
           media: draft.versions[0]?.media ?? [],
           firstComment: draft.post.firstComment ?? '',
+          tagIds: draftTags?.get(draft.post.id)?.map((t) => t.id) ?? [],
         }}
+        tags={tags.map(({ id, name, color }) => ({ id, name, color }))}
         another={sp.another === '1'}
         start={item ? { accountIds: item.accountIds.filter((id) => accounts.some((a) => a.id === id)), main: item.body, date: item.date, time: item.time }
           // Opened from an account's page: that account starts ticked.

@@ -1,8 +1,10 @@
-import { aiConfigured, aiUsage, globalPublishingEnabled, modelFor, publishingAllowed } from '@kdan-social/core';
+import { aiConfigured, aiUsage, globalPublishingEnabled, listTags, modelFor, publishingAllowed } from '@kdan-social/core';
 import { fmtN, zoneOptions } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { togglePublishing, updateSettingsAction } from '@/app/app/actions';
+import { deleteTagAction, togglePublishing, updateSettingsAction } from '@/app/app/actions';
+import { ConfirmSubmit } from '@/components/confirm';
+import { TagPill } from '@/components/tags';
 import { NoticeToast } from '@/components/toast';
 
 // Sections after Buffer's General settings: one card per concern, each saved on its own.
@@ -11,7 +13,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const manager = role === 'owner' || role === 'admin';
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
-  const usage = await aiUsage(getDb(), { workspaceId: workspace.id, days: 30 });
+  const [usage, tags] = await Promise.all([aiUsage(getDb(), { workspaceId: workspace.id, days: 30 }), listTags(getDb(), workspace.id)]);
 
   return (
     <main className="main" style={{ maxWidth: 860 }}>
@@ -60,6 +62,27 @@ export default async function Settings({ searchParams }: { searchParams: Promise
             <button className={`btn ${workspace.publishingEnabled ? '' : 'btn-danger'}`} type="submit">{workspace.publishingEnabled ? '關閉工作區發文' : '開啟工作區發文'}</button>
           </form>
         ) : <span className="small muted">只有擁有者可以切換。</span>}
+      </section>
+
+      <section id="tags" className="card" aria-labelledby="h-tags">
+        <div className="card-head">
+          <div>
+            <h2 id="h-tags">標籤</h2>
+            <div className="small muted">在編輯器的「標籤」選單輸入名稱就能建立；刪除後，貼文上的這個標籤也會一起移除。</div>
+          </div>
+        </div>
+        {tags.length === 0 && <div className="list-row small muted">還沒有標籤。</div>}
+        {tags.map((t) => (
+          <div key={t.id} className="list-row">
+            <span style={{ flex: 1 }}><TagPill tag={t} /></span>
+            {manager && (
+              <form action={deleteTagAction}>
+                <input type="hidden" name="id" value={t.id} />
+                <ConfirmSubmit className="btn btn-sm" question={`刪除標籤「${t.name}」？貼文上的這個標籤會一起移除。`}>刪除</ConfirmSubmit>
+              </form>
+            )}
+          </div>
+        ))}
       </section>
 
       <section className="card" aria-labelledby="h-ai">

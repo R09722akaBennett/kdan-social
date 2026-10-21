@@ -1,6 +1,6 @@
 'use server';
 
-import { aiAdapt, AiError, aiRewrite, aiWriter, ComposeError, createPost, listDrafts, reviewDetail, saveDraft, updatePost, type RewriteAction, type Schedule } from '@kdan-social/core';
+import { aiAdapt, AiError, aiRewrite, aiWriter, ComposeError, createPost, createTag, listDrafts, listTags, reviewDetail, saveDraft, TAG_COLORS, TagError, updatePost, type RewriteAction, type Schedule } from '@kdan-social/core';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -32,6 +32,7 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
     accountIds: string[];
     media: Array<{ url: string; previewUrl?: string; alt?: string }>;
     firstComment?: string;
+    tagIds?: string[];
     /** Open a fresh composer afterwards instead of the list. */
     createAnother?: boolean;
     schedule: Schedule | { mode: 'keep' };
@@ -59,25 +60,25 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   if (asDraft && payload.postId) return { error: '已排程的貼文不能存成草稿。' };
   if (payload.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => u.startsWith(prefix) || kept.has(u)))) return { error: '圖片來源不正確，請重新上傳。' };
   try {
-    const { postId, draftId, body, perAccount, accountIds, media, firstComment, createAnother, schedule, viewerTimeZone } = payload;
+    const { postId, draftId, body, perAccount, accountIds, media, firstComment, tagIds, createAnother, schedule, viewerTimeZone } = payload;
     const who = { workspaceId: workspace.id, actor: user.email, role };
     if (asDraft) {
-      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media, firstComment });
+      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media, firstComment, tagIds });
       revalidatePath('/app', 'layout');
       target = createAnother ? `/app/posts/new?another=1&notice=${encodeURIComponent('已存成草稿，接著寫下一篇')}`
         : `/app/channels/${accountIds[0]}?tab=drafts&notice=${encodeURIComponent('已存成草稿')}`;
     } else if (postId) {
-      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, firstComment, schedule, viewerTimeZone });
+      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, firstComment, tagIds, schedule, viewerTimeZone });
       revalidatePath('/app', 'layout');
       // `redirect` throws, so it must stay outside this try; remember where to go.
       target = `/app/approvals?post=${postId}&notice=${encodeURIComponent(approved ? '已儲存，貼文會照排定時間發出' : '已重新送審')}`;
     } else {
       if (schedule.mode === 'keep') return { error: '新貼文要選擇發布時間。' };
-      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, firstComment, schedule, viewerTimeZone, draftId });
+      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, firstComment, tagIds, schedule, viewerTimeZone, draftId });
       if (createAnother) target = `/app/posts/new?another=1&notice=${encodeURIComponent(role === 'owner' || role === 'admin' ? '已排程，接著寫下一篇' : '已送出審核，接著寫下一篇')}`;
     }
   } catch (e) {
-    if (e instanceof ComposeError) return { error: e.message };
+    if (e instanceof ComposeError || e instanceof TagError) return { error: e.message };
     throw e;
   }
   if (target) redirect(target);
@@ -105,6 +106,19 @@ export async function aiAdaptAction(input: { accountId: string; text: string }):
     return await aiAdapt(getDb(), aiWriter(), { workspaceId: workspace.id, actor: user.email, ...input });
   } catch (e) {
     if (e instanceof AiError) return { error: e.message };
+    throw e;
+  }
+}
+
+/** Create a tag from the composer's menu, or return the one already named so; each new tag takes the next color. */
+export async function createTagAction(name: string): Promise<{ id: string; name: string; color: string } | { error: string }> {
+  const { workspace } = await requireWorkspace();
+  try {
+    const existing = await listTags(getDb(), workspace.id);
+    const tag = await createTag(getDb(), { workspaceId: workspace.id, name, color: TAG_COLORS[existing.length % TAG_COLORS.length] });
+    return { id: tag.id, name: tag.name, color: tag.color };
+  } catch (e) {
+    if (e instanceof TagError) return { error: e.message };
     throw e;
   }
 }

@@ -1,4 +1,5 @@
-import { clockInZone, dayInZone, formatInZone, listGroups, tasksBetween, weekStart, type ScheduledTask } from '@kdan-social/core';
+import { clockInZone, dayInZone, formatInZone, listGroups, listTags, tagsForPosts, tasksBetween, weekStart, type ScheduledTask } from '@kdan-social/core';
+import { TagPill } from '@/components/tags';
 import { FilterMenu } from '@/components/groups';
 import { EmptyState, errorText, GroupTag, Icon, Pf, SegLinks, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
@@ -50,7 +51,7 @@ function cardsFor(tasks: ScheduledTask[], viewTz: string): Card[] {
   });
 }
 
-export default async function Calendar({ searchParams }: { searchParams: Promise<{ week?: string; view?: string; group?: string | string[]; created?: string }> }) {
+export default async function Calendar({ searchParams }: { searchParams: Promise<{ week?: string; view?: string; group?: string | string[]; tag?: string | string[]; created?: string }> }) {
   const { workspace } = await requireWorkspace();
   const q = await searchParams;
   const week = Number.parseInt(q.week ?? '0', 10) || 0;
@@ -58,11 +59,13 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
   const db = getDb();
   const viewTz = workspace.timeZone;
   const filter = [q.group ?? []].flat();
-  const groups = await listGroups(db, workspace.id);
+  const tagFilter = [q.tag ?? []].flat();
+  const [groups, tags] = await Promise.all([listGroups(db, workspace.id), listTags(db, workspace.id)]);
 
   const start = new Date(weekStart(new Date(), viewTz).getTime() + week * 7 * 86_400_000);
   const end = new Date(start.getTime() + 7 * 86_400_000);
-  const tasks = await tasksBetween(db, { workspaceId: workspace.id, from: start, to: end, groupIds: filter.map((g) => (g === 'none' ? null : g)) });
+  const tasks = await tasksBetween(db, { workspaceId: workspace.id, from: start, to: end, groupIds: filter.map((g) => (g === 'none' ? null : g)), tagIds: tagFilter.map((t) => (t === 'none' ? null : t)) });
+  const postTags = await tagsForPosts(db, tasks.map((t) => t.postId));
   const todayKey = dayInZone(new Date(), viewTz);
   const days = Array.from({ length: 7 }, (_, i) => {
     const at = new Date(start.getTime() + i * 86_400_000);
@@ -76,6 +79,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
     if (w) s.set('week', String(w));
     if ((p.view ?? view) === 'list') s.set('view', 'list');
     for (const g of filter) s.append('group', g);
+    for (const t of tagFilter) s.append('tag', t);
     const qs = s.toString();
     return `/app/calendar${qs ? `?${qs}` : ''}`;
   };
@@ -94,6 +98,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
         </div>
         <div className="row">
           <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
+          {tags.length > 0 && <FilterMenu label="標籤" param="tag" options={[...tags.map((t) => ({ id: t.id, label: t.name })), { id: 'none', label: '未加標籤' }]} />}
           <SegLinks label="檢視" items={[{ href: href({ view: 'week' }), text: '週', on: view === 'week' }, { href: href({ view: 'list' }), text: '清單', on: view === 'list' }]} />
           <span className="chip" style={{ height: 36, border: '1px solid var(--control)', background: '#fff', fontSize: 13 }}>顯示時區：{zoneName(viewTz)}</span>
         </div>
@@ -158,6 +163,7 @@ export default async function Calendar({ searchParams }: { searchParams: Promise
                 <span className="num" style={{ width: 120, color: 'var(--ink-2)' }}>{d.wd} {d.key} {c.time}</span>
                 <GroupTag name={c.groupName} />
                 <a href={`/app/posts/${c.postId}`} style={{ flex: '1 1 260px', minWidth: 0, color: 'inherit' }}>{c.title}</a>
+                {postTags.get(c.postId) && <span className="tag-row">{postTags.get(c.postId)!.map((t) => <TagPill key={t.id} tag={t} />)}</span>}
                 <span className="row" style={{ gap: 4 }}>{c.tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={isBad(t)} />)}</span>
                 <span className="small" style={{ width: 200, textAlign: 'right', color: s.fg }}>{s.label}{page && post ? <> · <a href={`https://www.facebook.com/${page}/posts/${post}`} target="_blank" rel="noreferrer">看貼文</a></> : null}</span>
                 {c.detail && <span className="tiny" style={{ flexBasis: '100%', color: 'var(--ink-2)' }}>{c.detail}</span>}

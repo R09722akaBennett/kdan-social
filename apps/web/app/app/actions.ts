@@ -1,6 +1,6 @@
 'use server';
 
-import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -383,4 +383,13 @@ export async function moveIdeaAction(formData: FormData) {
 export async function deleteIdeaAction(formData: FormData) {
   const { workspace } = await requireWorkspace();
   await ideaChange(() => deleteIdea(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') }), '已刪除點子');
+}
+
+export async function deleteTagAction(formData: FormData) {
+  const { workspace, role } = await requireWorkspace();
+  // It comes off every post that had it, so only those who manage the workspace may.
+  if (role !== 'owner' && role !== 'admin') redirect(`/app/settings?error=${encodeURIComponent('只有擁有者或管理員可以刪除標籤。')}#tags`);
+  await deleteTag(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') });
+  revalidatePath('/app', 'layout');
+  redirect(`/app/settings?notice=${encodeURIComponent('已刪除標籤')}#tags`);
 }

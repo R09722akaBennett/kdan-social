@@ -5,7 +5,8 @@ import { useActionState, useEffect, useMemo, useState, type CSSProperties } from
 import { clockInZone, dayInZone, zonedTimeToUtc } from '@kdan-social/core/time';
 import { bannedHits } from '@kdan-social/core/voice-rules';
 import { Icon, Pf, PLATFORM, zoneName, type Platform } from '@/components/ui';
-import { aiAdaptAction, aiRewriteAction, createImageUpload, submitPost, type AiResult, type SubmitState } from '../actions';
+import { aiAdaptAction, aiRewriteAction, createImageUpload, createTagAction, submitPost, type AiResult, type SubmitState } from '../actions';
+import { TagPicker, type TagView } from '@/components/tags';
 
 type Group = { id: string; name: string };
 type Account = { id: string; groupId: string | null; timeZone: string; platform: Platform; name: string; status: string };
@@ -51,6 +52,7 @@ export type EditPost = {
   custom: Record<string, string>;
   media: Array<{ url: string; previewUrl?: string; alt?: string }>;
   firstComment?: string;
+  tagIds?: string[];
   /** Review comments, newest last, shown above the editor as Later shows a post's activity. */
   notes: Array<{ author: string; body: string; at: string }>;
   /** The current times, in words, for the "keep" option. */
@@ -59,17 +61,19 @@ export type EditPost = {
 
 /** A post proposed elsewhere (the AI assistant's plan), to start a new post from. */
 /** A saved draft being opened again; it can still change accounts and be scheduled. */
-export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media' | 'firstComment'>;
+export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media' | 'firstComment' | 'tagIds'>;
 
 export type StartPost = { accountIds: string[]; main: string; date?: string; time?: string };
 
 const ACTION_LABEL = { rephrase: '改寫', shorten: '縮短', casual: '更口語', formal: '更正式', tags: '建議標籤', ask: '依你的指示修改' } as const;
 type Action = keyof typeof ACTION_LABEL;
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, draft, start, another, aiReady, banned }: {
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, draft, start, another, tags, aiReady, banned }: {
   workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost; draft?: DraftPost; start?: StartPost;
   /** Keep 「再建立一篇」 ticked, as it was when this composer was reopened after a post. */
   another?: boolean;
+  /** The workspace's tags, for the tag menu. */
+  tags: TagView[];
   aiReady: boolean; banned: string[];
 }) {
   // What the form starts from: the post being edited or the draft being reopened.
@@ -83,6 +87,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const [main, setMain] = useState(seed?.main ?? start?.main ?? '');
   const [firstComment, setFirstComment] = useState(seed?.firstComment ?? '');
   const [createAnother, setCreateAnother] = useState(!!another);
+  const [tagIds, setTagIds] = useState<string[]>(seed?.tagIds ?? []);
   // Text customised for one account; an account without an entry uses the main text.
   const [custom, setCustom] = useState<Record<string, string>>(seed?.custom ?? {});
   const [customizing, setCustomizing] = useState(Object.keys(seed?.custom ?? {}).length > 0);
@@ -211,6 +216,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
     accountIds: chosen.map((a) => a.id),
     media: media.map(({ url, previewUrl, alt }) => ({ url, previewUrl, ...(alt ? { alt } : {}) })),
     firstComment: commentable.length ? firstComment : '',
+    tagIds,
     createAnother: !edit && createAnother,
     schedule: mode === 'now' || mode === 'keep' ? { mode } : { mode, date, time },
     viewerTimeZone: viewerTz,
@@ -244,6 +250,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
         <a href="/app" className="btn icon-btn" aria-label="返回總覽" style={{ border: 0 }}><Icon name="chevronLeft" size={20} stroke={2} /></a>
         <h1 style={{ fontSize: 18 }}>{edit ? '修改貼文' : draft ? '編輯草稿' : '新增貼文'}</h1>
         <span className="chip chip-neutral">{edit ? '修改中' : draft ? '草稿' : '未儲存'}</span>
+        {/* After Buffer's Tags menu beside the composer's title. */}
+        <TagPicker tags={tags} value={tagIds} onChange={setTagIds} create={createTagAction} />
         <span className="spacer small muted">{workspace}</span>
       </header>
 

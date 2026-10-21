@@ -1,4 +1,6 @@
-import { channelAccount, channelCounts, channelItems, clockInZone, dayInZone, listGroups, type ChannelItem, type ChannelTab } from '@kdan-social/core';
+import { channelAccount, channelCounts, channelItems, clockInZone, dayInZone, listGroups, listTags, tagsForPosts, type ChannelItem, type ChannelTab } from '@kdan-social/core';
+import { FilterMenu } from '@/components/groups';
+import { TagPill } from '@/components/tags';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PlatformMark } from '@/components/brand-icons';
@@ -46,7 +48,7 @@ function dayHeading(at: Date, timeZone: string, now: Date) {
  * One account's posts, after Buffer's channel view: tabs for what is scheduled, drafted,
  * waiting for review and sent, each listed by day on the account's own clock.
  */
-export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; view?: string; notice?: string }> }) {
+export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; view?: string; tag?: string | string[]; notice?: string }> }) {
   const [{ id }, sp, { workspace }] = await Promise.all([params, searchParams, requireWorkspace()]);
   const db = getDb();
   const account = await channelAccount(db, { workspaceId: workspace.id, accountId: id });
@@ -54,12 +56,17 @@ export default async function Channel({ params, searchParams }: { params: Promis
   const tab = (TABS.some((t) => t.key === sp.tab) ? sp.tab : 'queue') as ChannelTab;
   // Only Instagram shows posts as a grid, so only its page offers the view.
   const grid = account.platform === 'instagram' && sp.view === 'grid';
-  const [counts, items, groups, gridItems] = await Promise.all([
+  const tagIds = [sp.tag ?? []].flat().map((t) => (t === 'none' ? null : t));
+  const [counts, items, groups, gridItems, tags] = await Promise.all([
     channelCounts(db, { workspaceId: workspace.id, accountId: id }),
-    channelItems(db, { workspaceId: workspace.id, accountId: id, tab }),
+    channelItems(db, { workspaceId: workspace.id, accountId: id, tab, tagIds }),
     listGroups(db, workspace.id),
     grid ? Promise.all((['queue', 'approvals', 'sent'] as const).map((t) => channelItems(db, { workspaceId: workspace.id, accountId: id, tab: t }))) : null,
+    listTags(db, workspace.id),
   ]);
+  const postTags = await tagsForPosts(db, items.map((i) => i.postId));
+  // Switching tabs keeps the tag filter.
+  const tagQs = [sp.tag ?? []].flat().map((t) => `&tag=${encodeURIComponent(t)}`).join('');
   // The feed as it will look: the latest scheduled post top left, then back through what went out.
   const [queued = [], waiting = [], sent = []] = gridItems ?? [];
   const feed = [...[...queued, ...waiting].sort((x, y) => (y.runAt?.getTime() ?? 0) - (x.runAt?.getTime() ?? 0)), ...sent];
@@ -128,10 +135,11 @@ export default async function Channel({ params, searchParams }: { params: Promis
       {!grid && <>
       <nav className="channel-tabs" aria-label="貼文分類">
         {TABS.map((t) => (
-          <Link key={t.key} href={`/app/channels/${account.id}?tab=${t.key}`} aria-current={t.key === tab ? 'page' : undefined}>
+          <Link key={t.key} href={`/app/channels/${account.id}?tab=${t.key}${tagQs}`} aria-current={t.key === tab ? 'page' : undefined}>
             {t.label}<span className="channel-count num">{counts[t.key]}</span>
           </Link>
         ))}
+        {tags.length > 0 && <span style={{ marginLeft: 'auto', alignSelf: 'center' }}><FilterMenu label="標籤" param="tag" options={[...tags.map((t) => ({ id: t.id, label: t.name })), { id: 'none', label: '未加標籤' }]} /></span>}
       </nav>
 
       {tab === 'queue' && <ChannelWelcome />}
@@ -159,6 +167,7 @@ export default async function Channel({ params, searchParams }: { params: Promis
                     </div>
                     <div className="card channel-card">
                       <div className="channel-card-body">
+                        {postTags.get(item.postId) && <span className="tag-row channel-tags">{postTags.get(item.postId)!.map((t) => <TagPill key={t.id} tag={t} />)}</span>}
                         <p className="channel-text">{item.body || <span className="muted">（沒有文字）</span>}</p>
                         {item.media[0] && (
                           <img className="channel-thumb" src={item.media[0].previewUrl ?? item.media[0].url} alt={item.media[0].alt ?? ''} />
