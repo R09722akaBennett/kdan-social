@@ -334,4 +334,14 @@ th:last-child, td:last-child { padding-right: 18px; }
 .notice-close:hover { background: var(--line-soft); color: var(--ink); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-@media (prefers-reduced-motion: reduce) { .notice-toast { animation: none; } }
+/* Setup steps as cards, each ticked off when done. */
+.step-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.step-card[data-done='true'] { background: var(--sunken); }
+.step-check { width: 20px; height: 20px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--line); color: transparent; }
+.step-card[data-done='true'] .step-check { border-color: var(--ok); background: var(--ok); color: #fff; }
+
+/* Loading skeleton: grey blocks in the page's shape while the server renders it. */
+.skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--line-soft) 25%, var(--sunken) 50%, var(--line-soft) 75%); background-size: 200% 100%; animation: skel-shine 1.4s ease-in-out infinite; }
+@keyframes skel-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+@media (prefers-reduced-motion: reduce) { .notice-toast, .skel { animation: none; } }

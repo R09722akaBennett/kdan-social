@@ -20,6 +20,7 @@ import { currentMember } from '@/lib/auth';
 import { dismissOnboardingAction, signOut } from '@/app/app/actions';
 import { CreateWorkspaceForm } from '@/components/create-workspace';
 import { getDb, signupCodes } from '@/lib/server';
+import { NoticeToast } from '@/components/toast';
 
 const NOTICE: Record<string, [string, string]> = {
   invite_used: ['warn', '這個邀請連結已經用過或被撤回了，請邀請你的人再傳一次。'],
@@ -43,6 +44,12 @@ const NOTICE: Record<string, [string, string]> = {
 const reconnectHref = (platform: string) => (platform === 'line' ? '/app/connect/line' : '/api/meta/connect');
 const SHORT = { facebook: 'FB', instagram: 'IG', line: 'LINE' } as const;
 const SEVERITY = ['err', 'warn', 'plan'];
+
+// After Buffer's "Good Afternoon, name", by the hour where the workspace is.
+function greeting(tz: string) {
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  return h >= 5 && h < 11 ? '早安' : h >= 11 && h < 18 ? '午安' : '晚安';
+}
 
 function taskChip(t: ScheduledTask): ['plan' | 'warn' | 'err', string] {
   if (t.accountStatus !== 'active') return ['err', `${SHORT[t.platform]} 會失敗`];
@@ -90,14 +97,16 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const db = getDb();
   const { workspace, role } = membership;
   const groupIds = filter.map((g) => (g === 'none' ? null : g));
-  const [groups, accounts, followers, counts, upcoming, progress] = await Promise.all([
+  const [groups, accounts, followers, counts, upcoming, progress, profile] = await Promise.all([
     listGroups(db, workspace.id),
     listAccounts(db, workspace.id),
     followerStats(db, workspace.id),
     overviewCounts(db, { workspaceId: workspace.id, groupIds, timeZone: workspace.timeZone }),
     upcomingTasks(db, { workspaceId: workspace.id, groupIds, limit: 30 }),
     setupProgress(db, workspace.id),
+    getProfile(db, user.id),
   ]);
+  const name = profile?.displayName || user.email.split('@')[0];
   const inFilter = (groupId: string | null) => filter.length === 0 || filter.includes(groupId ?? 'none');
   const shownAccounts = accounts.filter((a) => inFilter(a.groupId));
   // Ungrouped accounts get a card of their own, after the customer's groups.
@@ -112,14 +121,14 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
   // Known keys carry their own tone; any other notice is a sentence to show as is.
   const note: [string, string] | undefined = notice ? NOTICE[notice] ?? ['ok', notice] : undefined;
-  // After HoneyBook's step-by-step list and Hootsuite's dismissible Getting Started card.
+  // After Buffer's First Steps cards, with HoneyBook's count and Hootsuite's dismiss.
   const steps = [
-    { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false },
-    { title: '送一則測試貼文', detail: '在「帳號與群組」按「送一則測試 dry-run」，看它從排程走到記錄，不會真的發出。', href: '/app/channels', done: progress.testRun, optional: false },
-    { title: '把帳號分群組', detail: '例如依國家、子品牌或門市分，發文時可以一鍵選取一組帳號。', href: '/app/channels#groups', done: progress.groups, optional: true },
-    { title: '設定品牌語氣', detail: 'AI 改寫與試寫都會照這裡的語氣、禁用詞與詞彙表。', href: '/app/voice', done: progress.voice, optional: true },
-    { title: '邀請成員', detail: '讓編輯寫貼文、管理員核准。', href: '/app/members', done: progress.members, optional: true },
-    { title: '開啟對外發文', detail: '確認測試沒問題後再開，之後到時間的貼文才會真的發出。', href: '/app/settings#publishing', done: progress.publishing, optional: false },
+    { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false, action: '連結帳號' },
+    { title: '送一則測試貼文', detail: '在「帳號與群組」按「送一則測試 dry-run」，看它從排程走到記錄，不會真的發出。', href: '/app/channels', done: progress.testRun, optional: false, action: '送測試貼文' },
+    { title: '把帳號分群組', detail: '例如依國家、子品牌或門市分，發文時可以一鍵選取一組帳號。', href: '/app/channels#groups', done: progress.groups, optional: true, action: '建立群組' },
+    { title: '設定品牌語氣', detail: 'AI 改寫與試寫都會照這裡的語氣、禁用詞與詞彙表。', href: '/app/voice', done: progress.voice, optional: true, action: '設定語氣' },
+    { title: '邀請成員', detail: '讓編輯寫貼文、管理員核准。', href: '/app/members', done: progress.members, optional: true, action: '邀請成員' },
+    { title: '開啟對外發文', detail: '確認測試沒問題後再開，之後到時間的貼文才會真的發出。', href: '/app/settings#publishing', done: progress.publishing, optional: false, action: '前往設定' },
   ];
   const done = steps.filter((x) => x.done).length;
   const allDone = done === steps.length;
@@ -134,8 +143,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     <main className="main">
       <header className="page-head">
         <div>
-          <h1>總覽</h1>
-          <div className="sub">{workspace.name} · {today} · 以{zoneName(tz)}時間顯示</div>
+          <h1>{greeting(tz)}，{name} <span className="wave" aria-hidden="true">👋</span></h1>
+          <div className="sub">{today} · {workspace.name} · 以{zoneName(tz)}時間顯示</div>
         </div>
         <div className="row">
           <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
@@ -143,33 +152,31 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         </div>
       </header>
 
-      {note && <div className={`chip chip-${note[0]}`} role="status" style={{ height: 'auto', padding: '10px 14px', fontSize: 14 }}>{note[1].replace('{n}', n ?? '0')}</div>}
+      {note && <NoticeToast tone={note[0] as 'ok' | 'warn' | 'err'} text={note[1].replace('{n}', n ?? '0')} />}
 
       {!progress.dismissed && !allDone && (
-        <section className="card" aria-labelledby="h-setup">
-          <div className="card-head">
-            <div style={{ flex: 1 }}>
-              <h2 id="h-setup">開始使用 kdan-social</h2>
-              <div className="row small muted" style={{ gap: 10, marginTop: 6 }}>
-                <span>{done} / {steps.length} 完成</span>
-                <span role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={steps.length} aria-label="設定進度" style={{ flex: '0 1 240px', height: 6, borderRadius: 3, background: 'var(--line-soft)', overflow: 'hidden', display: 'block' }}>
-                  <span style={{ display: 'block', height: 6, width: `${(done / steps.length) * 100}%`, background: 'var(--ok)' }} />
-                </span>
-              </div>
-            </div>
-            <form action={dismissOnboardingAction}><button type="submit" className="btn icon-btn" aria-label="關閉設定清單" title="關閉設定清單" style={{ width: 32, height: 32, minHeight: 32, border: 0 }}><Icon name="close" size={16} /></button></form>
+        <section className="stack" style={{ gap: 10 }} aria-labelledby="h-setup">
+          <div className="row" style={{ gap: 10 }}>
+            <h2 id="h-setup">開始使用</h2>
+            <span className="small muted num">{done} / {steps.length} 完成</span>
+            <span className="spacer" />
+            <form action={dismissOnboardingAction}><button type="submit" className="btn btn-sm">不再顯示</button></form>
           </div>
-          {steps.map((st) => (
-            <a key={st.title} href={st.href} className="list-row" style={{ color: 'inherit', alignItems: 'center' }}>
-              <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: 11, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: st.done ? 0 : '2px solid var(--line)', background: st.done ? 'var(--ok)' : 'transparent', color: '#fff', fontSize: 13, fontWeight: 700 }}>{st.done ? '✓' : ''}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600, textDecoration: st.done ? 'line-through' : 'none', color: st.done ? 'var(--ink-3)' : 'var(--ink)' }}>{st.title}</span>
-                {st.optional && <span className="tiny muted" style={{ marginLeft: 6 }}>選填</span>}
-                <span className="small muted" style={{ display: 'block' }}>{st.detail}</span>
-              </span>
-              {!st.done && <Icon name="chevronRight" size={16} />}
-            </a>
-          ))}
+          <div className="grid" style={{ '--min': '240px', alignItems: 'stretch' } as CSSProperties}>
+            {steps.map((st, i) => (
+              <div key={st.title} className="card step-card" data-done={st.done}>
+                <div className="row" style={{ gap: 8, flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                  <span style={{ flex: 1, fontWeight: 600 }}>
+                    {i + 1}. {st.title}
+                    {st.optional && <span className="tiny muted" style={{ marginLeft: 6, fontWeight: 400 }}>選填</span>}
+                  </span>
+                  <span className="step-check" aria-label={st.done ? '已完成' : '未完成'}><Icon name="tick" size={12} stroke={2.6} /></span>
+                </div>
+                <p className="small muted" style={{ margin: 0, flex: 1 }}>{st.detail}</p>
+                {st.done ? <span className="small" style={{ color: 'var(--ok)' }}>已完成</span> : <a href={st.href} className="btn btn-sm" style={{ alignSelf: 'flex-start' }}>{st.action}</a>}
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -191,41 +198,94 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         </div>
       )}
 
-      <section className="grid" style={{ '--min': '200px' } as CSSProperties} aria-label="數字">
-        <a href="/app/analytics" className="card stat">
-          <span className="small muted">總粉絲數（{shownAccounts.length} 個帳號）</span>
-          <span className="value">{withCounts.length ? fmtN(total) : '—'}</span>
-          <span className="small" style={{ color: deltas.length ? 'var(--ok)' : 'var(--ink-3)' }}>
-            {!withCounts.length ? '每天 00:30 更新，明天起會有數字' : deltas.length ? `${delta >= 0 ? '+' : ''}${fmtN(delta)} 近 7 天` : '累積滿 7 天後會顯示變化'}
-          </span>
-        </a>
-        <a href="/app/calendar" className="card stat">
-          <span className="small muted">本週已發布</span>
-          <span className="value">{counts.published.posts} 篇</span>
-          <span className="small muted">共 {counts.published.tasks} 個發文任務</span>
-        </a>
-        <a href="/app/approvals" className="card stat">
-          <span className="small muted">待審核</span>
-          <span className="value">{counts.pendingReview.posts} 篇</span>
-          <span className="small" style={{ color: counts.pendingReview.posts ? 'var(--warn)' : 'var(--ink-3)' }}>{counts.pendingReview.posts ? '等擁有者或管理員核准' : '沒有待審貼文'}</span>
-        </a>
-        <a href="/app/calendar" className="card stat">
-          <span className="small muted">發布失敗</span>
-          <span className="value">{counts.failed.tasks} 個任務</span>
-          <span className="small" style={{ color: counts.failed.tasks ? 'var(--err)' : 'var(--ink-3)' }}>{counts.failed.tasks ? '近 7 天，看原因與重試' : '近 7 天沒有失敗'}</span>
-        </a>
+      {/* After Buffer's Weekly Pulse: this week's numbers in one row. */}
+      <section className="stack" style={{ gap: 10 }} aria-labelledby="h-pulse">
+        <h2 id="h-pulse">本週概況</h2>
+        <div className="grid" style={{ '--min': '150px' } as CSSProperties}>
+          <a href="/app/analytics" className="card stat">
+            <span className="small muted">總粉絲數（{shownAccounts.length} 個帳號）</span>
+            <span className="value">{withCounts.length ? fmtN(total) : '—'}</span>
+            <span className="small" style={{ color: deltas.length ? 'var(--ok)' : 'var(--ink-3)' }}>
+              {!withCounts.length ? '每天 00:30 更新，明天起會有數字' : deltas.length ? `${delta >= 0 ? '+' : ''}${fmtN(delta)} 近 7 天` : '累積滿 7 天後會顯示變化'}
+            </span>
+          </a>
+          <a href="/app/calendar" className="card stat">
+            <span className="small muted">本週已發布</span>
+            <span className="value">{counts.published.posts} 篇</span>
+            <span className="small muted">共 {counts.published.tasks} 個發文任務</span>
+          </a>
+          <a href="/app/approvals" className="card stat">
+            <span className="small muted">待審核</span>
+            <span className="value">{counts.pendingReview.posts} 篇</span>
+            <span className="small" style={{ color: counts.pendingReview.posts ? 'var(--warn)' : 'var(--ink-3)' }}>{counts.pendingReview.posts ? '等擁有者或管理員核准' : '沒有待審貼文'}</span>
+          </a>
+          <a href="/app/calendar" className="card stat">
+            <span className="small muted">發布失敗</span>
+            <span className="value">{counts.failed.tasks} 個任務</span>
+            <span className="small" style={{ color: counts.failed.tasks ? 'var(--err)' : 'var(--ink-3)' }}>{counts.failed.tasks ? '近 7 天，看原因與重試' : '近 7 天沒有失敗'}</span>
+          </a>
+        </div>
       </section>
 
-      <section className="stack" aria-labelledby="h-groups">
-        <h2 id="h-groups">各群組</h2>
-        {cards.length === 0 && <div className="card card-pad small muted">還沒有連結帳號。<a href="/app/channels">去連結</a></div>}
-        <div className="grid" style={{ '--min': '300px' } as CSSProperties}>
+      {/* After Buffer's Up Next beside Comments: what goes out next, and the accounts it goes to. */}
+      <div className="grid" style={{ '--min': '360px', alignItems: 'stretch' } as CSSProperties}>
+        <section className="card" aria-labelledby="h-next">
+          <div className="card-head">
+            <h2 id="h-next">即將發布</h2>
+            <a href="/app/calendar" className="small">看行事曆</a>
+          </div>
+          {rows.length === 0 && (
+            <div className="empty">
+              <span className="empty-icon"><Icon name="calendar" size={20} /></span>
+              <strong style={{ fontWeight: 600 }}>還沒有排程中的貼文</strong>
+              <span className="small muted">排好的貼文會出現在這裡。</span>
+              <a href="/app/posts/new" className="btn btn-sm" style={{ marginTop: 6 }}>新增貼文</a>
+            </div>
+          )}
+          {rows.map((tasks) => {
+            const first = tasks[0]!;
+            const [tone, label] = tasks.map(taskChip).sort((a, b) => SEVERITY.indexOf(a[0]) - SEVERITY.indexOf(b[0]))[0]!;
+            const spread = new Set(tasks.map((t) => t.runAt.getTime())).size > 1;
+            return (
+              <div key={first.postId} className="list-row">
+                <div style={{ width: 96, display: 'flex', flexDirection: 'column' }}>
+                  <span className="num" style={{ fontWeight: 600 }}>{clockInZone(first.runAt, tz)}</span>
+                  <span className="tiny muted">{dayInZone(first.runAt, tz)}</span>
+                </div>
+                <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                  <a href={`/app/posts/${first.postId}`} style={{ color: 'inherit' }}>{first.title}</a>
+                  <div className="row" style={{ gap: 4, marginTop: 4 }}>
+                    {tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={t.accountStatus !== 'active'} />)}
+                    <span className="tiny muted">{tasks.length} 個帳號{spread ? ' · 依各帳號時區，從這個時間開始' : ''}</span>
+                  </div>
+                </div>
+                <a href={label === '待審核' || label === '要求修改' ? `/app/approvals?post=${first.postId}` : '/app/calendar'} style={{ color: 'inherit' }}>
+                  <Chip tone={tone}>{label}</Chip>
+                </a>
+              </div>
+            );
+          })}
+        </section>
+
+        <section className="card" aria-labelledby="h-groups">
+          <div className="card-head">
+            <h2 id="h-groups">各群組</h2>
+            <a href="/app/channels" className="small">管理帳號</a>
+          </div>
+          {cards.length === 0 && (
+            <div className="empty">
+              <span className="empty-icon"><Icon name="link" size={20} /></span>
+              <strong style={{ fontWeight: 600 }}>還沒有連結帳號</strong>
+              <span className="small muted">連結後，這裡會列出每個帳號的粉絲數和變化。</span>
+              <a href="/app/channels#add" className="btn btn-sm" style={{ marginTop: 6 }}>連結帳號</a>
+            </div>
+          )}
           {cards.map((g) => {
             const list = accounts.filter((a) => a.groupId === g.id);
             const zones = [...new Set(list.map((a) => a.timeZone))];
             return (
-              <div key={g.id ?? 'none'} className="card">
-                <div className="row" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line-soft)', gap: 10 }}>
+              <div key={g.id ?? 'none'} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <div className="row" style={{ padding: '12px 18px 4px', gap: 10 }}>
                   <span style={{ fontWeight: 600 }}>{g.name}</span>
                   <span className="spacer tiny muted num">{zones.map((z) => `${zoneName(z)} ${localTime(z)}`).join(' · ')}</span>
                 </div>
@@ -234,7 +294,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   const bad = a.status !== 'active';
                   const tag = bad ? '授權失效' : f?.delta7 != null ? `${f.delta7 >= 0 ? '+' : ''}${fmtN(f.delta7)}` : '';
                   return (
-                    <div key={a.id} className="row" style={{ padding: '10px 16px', gap: 10, flexWrap: 'nowrap' }}>
+                    <div key={a.id} className="row" style={{ padding: '8px 18px', gap: 10, flexWrap: 'nowrap' }}>
                       <Pf pf={a.platform} />
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
                       <span className="num" style={{ fontWeight: 500 }}>{f ? fmtN(f.followers) : '—'}</span>
@@ -245,39 +305,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
               </div>
             );
           })}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-head">
-          <h2>即將發布</h2>
-          <a href="/app/calendar" className="small">看行事曆</a>
-        </div>
-        {rows.length === 0 && <div className="list-row small muted">沒有排程中的貼文。<a href="/app/posts/new">新增貼文</a></div>}
-        {rows.map((tasks) => {
-          const first = tasks[0]!;
-          const [tone, label] = tasks.map(taskChip).sort((a, b) => SEVERITY.indexOf(a[0]) - SEVERITY.indexOf(b[0]))[0]!;
-          const spread = new Set(tasks.map((t) => t.runAt.getTime())).size > 1;
-          return (
-            <div key={first.postId} className="list-row">
-              <div style={{ width: 96, display: 'flex', flexDirection: 'column' }}>
-                <span className="num" style={{ fontWeight: 600 }}>{clockInZone(first.runAt, tz)}</span>
-                <span className="tiny muted">{dayInZone(first.runAt, tz)}</span>
-              </div>
-              <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-                <a href={`/app/posts/${first.postId}`} style={{ color: 'inherit' }}>{first.title}</a>
-                <div className="row" style={{ gap: 4, marginTop: 4 }}>
-                  {tasks.map((t) => <Pf key={t.id} pf={t.platform} size="sm" bad={t.accountStatus !== 'active'} />)}
-                  <span className="tiny muted">{tasks.length} 個帳號{spread ? ' · 依各帳號時區，從這個時間開始' : ''}</span>
-                </div>
-              </div>
-              <a href={label === '待審核' || label === '要求修改' ? `/app/approvals?post=${first.postId}` : '/app/calendar'} style={{ color: 'inherit' }}>
-                <Chip tone={tone}>{label}</Chip>
-              </a>
-            </div>
-          );
-        })}
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
