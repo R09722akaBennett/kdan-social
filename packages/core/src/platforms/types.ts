@@ -33,6 +33,9 @@ export type PostInsights = { reach: number | null; views: number | null; detail:
 export type InsightIssue = { metric: string; message: string };
 export type WithIssues<T> = { value: T; issues: InsightIssue[] };
 
+/** A comment under one of the account's posts; `authorId` lets the caller drop the account's own. */
+export type PlatformComment = { externalId: string; parentExternalId: string | null; author: string; authorId: string | null; text: string; createdAt: Date };
+
 /** A post found on the account itself, whoever published it, with its numbers at the time it was read. */
 export type AccountPost = { externalId: string; publishedAt: Date; text: string; permalink: string | null; mediaType: string | null; metrics: PostMetrics };
 
@@ -52,6 +55,15 @@ export interface PlatformClient<C = Credentials> {
    *   PlatformError: as `publish`; never retried, since the post itself is already out.
    */
   comment?(account: AccountRef<C>, externalPostId: string, text: string): Promise<{ externalCommentId: string }>;
+  /** Comments under a post, with one level of replies, newest first; absent where the platform has no comments. */
+  comments?(account: AccountRef<C>, externalPostId: string): Promise<PlatformComment[]>;
+  /**
+   * Answer a comment in public, as the account.
+   *
+   * Raises:
+   *   PlatformError: as `publish`; the caller decides whether to try again.
+   */
+  reply?(account: AccountRef<C>, externalCommentId: string, text: string): Promise<{ externalCommentId: string }>;
   /** Current follower count, or null when the platform has no number for that day yet. */
   followers(account: AccountRef<C>, now: Date): Promise<number | null>;
   /** The post's numbers so far, read with the same credentials it was published with. */

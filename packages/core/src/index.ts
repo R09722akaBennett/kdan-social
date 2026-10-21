@@ -22,6 +22,7 @@ export * from './channel';
 export * from './ideas';
 export * from './tags';
 export * from './goals';
+export * from './inbox';
 export * from './time';
 export * from './overview';
 export * from './groups';

@@ -247,6 +247,32 @@ export const notifications = pgTable(
   (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
 );
 
+export const inboxStatus = pgEnum('inbox_status', ['open', 'done']);
+
+// Comments people left under an account's Facebook and Instagram posts, after Buffer's
+// Community inbox. The account's own comments (first comments, replies) are not kept.
+export const inboxComments = pgTable(
+  'inbox_comments',
+  {
+    id: id(),
+    accountId: uuid('account_id').notNull().references(() => connectedAccounts.id, { onDelete: 'cascade' }),
+    externalId: text('external_id').notNull(),
+    postExternalId: text('post_external_id').notNull(),
+    // Set when the comment answers another comment rather than the post.
+    parentExternalId: text('parent_external_id'),
+    author: text('author').notNull(),
+    text: text('text').notNull(),
+    commentedAt: timestamp('commented_at', { withTimezone: true }).notNull(),
+    status: inboxStatus('status').notNull().default('open'),
+    replyExternalId: text('reply_external_id'),
+    replyText: text('reply_text'),
+    repliedBy: text('replied_by'),
+    repliedAt: timestamp('replied_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('inbox_account_external').on(t.accountId, t.externalId), index('inbox_queue').on(t.accountId, t.status, t.commentedAt)],
+);
+
 export const tagColor = pgEnum('tag_color', ['blue', 'green', 'orange', 'purple', 'pink', 'teal', 'gray']);
 
 // Labels a workspace defines for its posts, after Buffer's tags; a color name, not a code,

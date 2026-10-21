@@ -1,6 +1,6 @@
 import { classifyGraph, form, PlatformError, request, type FetchFn } from './http';
 import { facebookDaily, facebookDemographics, facebookPostInsights, instagramDaily, instagramDemographics, instagramPostInsights } from './meta-insights';
-import type { AccountPost, AccountRef, FacebookCredentials, PlatformClient, PostMetrics, PublishInput, PublishResult } from './types';
+import type { AccountPost, AccountRef, FacebookCredentials, PlatformClient, PlatformComment, PostMetrics, PublishInput, PublishResult } from './types';
 
 // Pin the Graph version so a Meta release cannot change behaviour under us; bump deliberately.
 export const GRAPH_VERSION = 'v25.0';
@@ -83,6 +83,19 @@ export function facebookClient(fetchFn: FetchFn = fetch): PlatformClient<Faceboo
       const res = await g.post(`${postId}/comments`, account.credentials.pageAccessToken, { message: text }, false);
       return { externalCommentId: String(res.id) };
     },
+    // `filter=stream` lists replies too, each with its `parent`. Reading needs
+    // pages_read_user_content; replying needs pages_manage_engagement.
+    async comments(account, postId): Promise<PlatformComment[]> {
+      const items = await g.list(`${postId}/comments`, account.credentials.pageAccessToken, { fields: 'id,message,from,created_time,parent{id}', filter: 'stream', order: 'reverse_chronological', limit: 50 }, () => true, 4);
+      return items.map((c) => {
+        const from = c.from as { id?: string; name?: string } | undefined;
+        return { externalId: String(c.id), parentExternalId: (c.parent as { id?: string } | undefined)?.id ?? null, author: from?.name ?? '（沒有名稱）', authorId: from?.id ?? null, text: String(c.message ?? ''), createdAt: new Date(String(c.created_time)) };
+      });
+    },
+    async reply(account, commentId, text) {
+      const res = await g.post(`${commentId}/comments`, account.credentials.pageAccessToken, { message: text }, false);
+      return { externalCommentId: String(res.id) };
+    },
     async followers(account) {
       const res = await g.get(account.externalId, account.credentials.pageAccessToken, 'followers_count');
       return typeof res.followers_count === 'number' ? res.followers_count : null;
@@ -159,6 +172,19 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
     // Needs instagram_manage_comments.
     async comment(account, mediaId, text) {
       const res = await g.post(`${mediaId}/comments`, account.credentials.pageAccessToken, { message: text }, false);
+      return { externalCommentId: String(res.id) };
+    },
+    // Reading and replying both need instagram_manage_comments.
+    async comments(account, mediaId): Promise<PlatformComment[]> {
+      const items = await g.list(`${mediaId}/comments`, account.credentials.pageAccessToken, { fields: 'id,text,timestamp,username,from{id},replies{id,text,timestamp,username,from{id}}', limit: 50 }, () => true, 4);
+      const one = (c: Record<string, unknown>, parent: string | null): PlatformComment => ({
+        externalId: String(c.id), parentExternalId: parent, author: String(c.username ?? '（沒有名稱）'), authorId: (c.from as { id?: string } | undefined)?.id ?? null,
+        text: String(c.text ?? ''), createdAt: new Date(String(c.timestamp)),
+      });
+      return items.flatMap((c) => [one(c, null), ...((c.replies as { data?: Array<Record<string, unknown>> } | undefined)?.data ?? []).map((r) => one(r, String(c.id)))]);
+    },
+    async reply(account, commentId, text) {
+      const res = await g.post(`${commentId}/replies`, account.credentials.pageAccessToken, { message: text }, false);
       return { externalCommentId: String(res.id) };
     },
     async followers(account) {

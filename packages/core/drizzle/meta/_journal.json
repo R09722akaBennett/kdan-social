@@ -134,6 +134,13 @@
       "when": 1792574446054,
       "tag": "0018_posting_goal",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792575990822,
+      "tag": "0019_inbox",
+      "breakpoints": true
     }
   ]
 }
