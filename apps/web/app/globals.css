@@ -193,3 +193,34 @@ th:last-child, td:last-child { padding-right: 18px; }
 
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 36px 20px; }
 .empty-icon { width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; background: var(--sunken); color: var(--ink-2); margin-bottom: 4px; }
+
+/* Login: the form on the left, a picture of the product on the right (Buffer's sign-in layout). */
+.login { min-height: 100vh; display: flex; gap: 24px; padding: 24px; background: var(--surface); }
+.login-main { flex: 1 1 0; display: flex; align-items: center; justify-content: center; }
+.login-form { width: min(380px, 100%); display: flex; flex-direction: column; align-items: center; text-align: center; }
+.login-showcase { flex: 1.15 1 0; border-radius: 24px; background: linear-gradient(160deg, var(--accent-soft) 0%, #DCE6FB 55%, #E8EEFC 100%); padding: 56px 48px 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+.login-badge { padding: 4px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.login-headline { font-size: 34px; line-height: 1.25; text-align: center; margin: 18px 0 0; color: #10204F; }
+.login-sub { margin: 12px 0 0; color: #3A4A78; font-size: 15px; }
+.login-stage { position: relative; width: min(560px, 100%); margin-top: 56px; flex: 1; display: flex; flex-direction: column; }
+.login-week { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 14px; border-radius: 16px 16px 0 0; background: #fff; box-shadow: 0 20px 48px rgba(16, 32, 79, .14); flex: 1; min-height: 340px; animation: login-rise .6s ease-out both; }
+.login-day { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-left: 1px solid var(--line-soft); padding-left: 6px; }
+.login-day:first-child { border-left: 0; padding-left: 0; }
+.login-dayname { font-size: 11px; color: var(--ink-3); font-weight: 600; margin-bottom: 4px; }
+.login-post { display: flex; flex-direction: column; gap: 2px; padding: 6px 7px; border-radius: 7px; font-size: 11px; color: var(--ink); background: #fff; border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--pf); text-align: left; }
+.login-post-time { font-weight: 700; font-size: 10px; color: var(--ink-2); }
+.pf-fb { --pf: var(--fb); }
+.pf-ig { --pf: var(--ig); }
+.pf-line { --pf: var(--line-app); }
+.login-float { position: absolute; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border-radius: 12px; background: #fff; box-shadow: 0 12px 32px rgba(16, 32, 79, .16); text-align: left; animation: login-rise .6s ease-out both, login-bob 6s ease-in-out infinite; }
+.login-float-label { font-size: 11px; color: var(--ink-2); }
+.login-float-value { font-size: 22px; font-weight: 700; color: var(--ink); }
+.login-up { font-size: 12px; color: var(--ok); font-weight: 600; }
+.login-float.f1 { left: -36px; top: 34px; animation-delay: .25s, 1s; }
+.login-float.f2 { right: -40px; top: 150px; animation-delay: .4s, 2s; }
+.login-float.f3 { left: 18%; bottom: 56px; flex-direction: row; align-items: center; gap: 12px; font-size: 14px; animation-delay: .55s, 3s; }
+.login-ai { width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+@keyframes login-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes login-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
+@media (prefers-reduced-motion: reduce) { .login-week, .login-float { animation: none; } }
+@media (max-width: 900px) { .login { padding: 16px; } .login-showcase { display: none; } }
