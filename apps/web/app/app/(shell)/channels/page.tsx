@@ -7,6 +7,7 @@ import { getDb } from '@/lib/server';
 import { deleteGroupAction, queueTest, saveGroupAction, setTimeZoneAction } from '@/app/app/actions';
 import { NoticeToast } from '@/components/toast';
 import { ConnectDialog } from '@/components/connect-dialog';
+import Link from 'next/link';
 
 const KIND = { facebook: 'Facebook 粉專', instagram: 'Instagram 商業帳號', line: 'LINE 官方帳號' } as const;
 
@@ -64,7 +65,7 @@ export default async function Channels({ searchParams }: { searchParams: Promise
             <div key={a.id} className="list-row" style={{ background: expired ? '#FFFAF9' : '#fff' }}>
               <Pf pf={a.platform} size="lg" />
               <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                <div className="row" style={{ gap: 8 }}><span style={{ fontWeight: 600 }}>{a.name}</span><GroupTag name={groupName(a.groupId)} /></div>
+                <div className="row" style={{ gap: 8 }}><Link href={`/app/channels/${a.id}`} style={{ fontWeight: 600, color: 'inherit' }}>{a.name}</Link><GroupTag name={groupName(a.groupId)} /></div>
                 <div className="small muted">{KIND[a.platform]} · {count}</div>
               </div>
               {manager

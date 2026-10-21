@@ -57,35 +57,40 @@ export type EditPost = {
 };
 
 /** A post proposed elsewhere (the AI assistant's plan), to start a new post from. */
-export type StartPost = { accountIds: string[]; main: string; date: string; time: string };
+/** A saved draft being opened again; it can still change accounts and be scheduled. */
+export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media'>;
+
+export type StartPost = { accountIds: string[]; main: string; date?: string; time?: string };
 
 const ACTION_LABEL = { rephrase: '改寫', shorten: '縮短', casual: '更口語', formal: '更正式', tags: '建議標籤', ask: '依你的指示修改' } as const;
 type Action = keyof typeof ACTION_LABEL;
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, start, aiReady, banned }: {
-  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost; start?: StartPost;
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, draft, start, aiReady, banned }: {
+  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost; draft?: DraftPost; start?: StartPost;
   aiReady: boolean; banned: string[];
 }) {
+  // What the form starts from: the post being edited or the draft being reopened.
+  const seed = edit ?? draft;
   const [right, setRight] = useState<'ai' | 'preview'>(aiReady ? 'ai' : 'preview');
   const [aiAction, setAiAction] = useState<Action | null>(null);
   const [suggestion, setSuggestion] = useState<AiResult | null>(null);
   const [ask, setAsk] = useState('');
   const [aiBusy, setAiBusy] = useState<string | null>(null);
-  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((edit?.accountIds ?? start?.accountIds ?? []).map((id) => [id, true])));
-  const [main, setMain] = useState(edit?.main ?? start?.main ?? '');
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((seed?.accountIds ?? start?.accountIds ?? []).map((id) => [id, true])));
+  const [main, setMain] = useState(seed?.main ?? start?.main ?? '');
   // Text customised for one account; an account without an entry uses the main text.
-  const [custom, setCustom] = useState<Record<string, string>>(edit?.custom ?? {});
-  const [customizing, setCustomizing] = useState(Object.keys(edit?.custom ?? {}).length > 0);
+  const [custom, setCustom] = useState<Record<string, string>>(seed?.custom ?? {});
+  const [customizing, setCustomizing] = useState(Object.keys(seed?.custom ?? {}).length > 0);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [media, setMedia] = useState<Media[]>(() => (edit?.media ?? []).map((m, i) => ({ url: m.url, previewUrl: m.previewUrl ?? m.url, alt: m.alt ?? '', ratio: 1, name: `圖片 ${i + 1}` })));
+  const [media, setMedia] = useState<Media[]>(() => (seed?.media ?? []).map((m, i) => ({ url: m.url, previewUrl: m.previewUrl ?? m.url, alt: m.alt ?? '', ratio: 1, name: `圖片 ${i + 1}` })));
   // Stored media keep no dimensions; measure them so the Instagram ratio check is real.
   useEffect(() => {
-    for (const m of edit?.media ?? []) {
+    for (const m of seed?.media ?? []) {
       const img = new Image();
       img.onload = () => setMedia((all) => all.map((x) => (x.url === m.url ? { ...x, ratio: img.naturalWidth / img.naturalHeight } : x)));
       img.src = m.previewUrl ?? m.url;
     }
-  }, [edit]);
+  }, [seed]);
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const viewerTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
@@ -194,6 +199,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
 
   const payload = JSON.stringify({
     ...(edit ? { postId: edit.postId } : {}),
+    ...(draft ? { draftId: draft.postId } : {}),
     body: main,
     perAccount: Object.fromEntries(chosen.filter((a) => custom[a.id] !== undefined).map((a) => [a.id, custom[a.id]])),
     accountIds: chosen.map((a) => a.id),
@@ -227,8 +233,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
       <input type="hidden" name="payload" value={payload} />
       <header className="row" style={{ padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', gap: 12 }}>
         <a href="/app" className="btn icon-btn" aria-label="返回總覽" style={{ border: 0 }}><Icon name="chevronLeft" size={20} stroke={2} /></a>
-        <h1 style={{ fontSize: 18 }}>{edit ? '修改貼文' : '新增貼文'}</h1>
-        <span className="chip chip-neutral">{edit ? '修改中' : '草稿'}</span>
+        <h1 style={{ fontSize: 18 }}>{edit ? '修改貼文' : draft ? '編輯草稿' : '新增貼文'}</h1>
+        <span className="chip chip-neutral">{edit ? '修改中' : draft ? '草稿' : '未儲存'}</span>
         <span className="spacer small muted">{workspace}</span>
       </header>
 
@@ -505,6 +511,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
         <div className="row spacer">
           {(state.error || blocking > 0) && <span className="tiny" style={{ color: 'var(--err)' }}>{state.error ?? `還有 ${blocking} 項要處理才能送出`}</span>}
           {!state.error && !blocking && <span className="tiny muted">{reviewed ? '送出後由擁有者或管理員核准' : '你送出的貼文會直接排程'}</span>}
+          {/* After Buffer's "Save Draft": kept without a time, so the checks above do not hold it back. */}
+          {!edit && <button type="submit" name="intent" value="draft" className="btn" disabled={pending || uploading > 0 || chosen.length === 0}>存成草稿</button>}
           <button type="submit" className="btn btn-primary" disabled={pending || uploading > 0 || blocking > 0 || chosen.length === 0}>
             {pending ? '送出中…' : edit ? (reviewed ? '重新送審' : '儲存變更') : reviewed ? `送出審核（${chosen.length} 個帳號）` : `排程到 ${chosen.length} 個帳號`}
           </button>

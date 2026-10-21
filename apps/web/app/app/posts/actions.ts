@@ -1,6 +1,6 @@
 'use server';
 
-import { aiAdapt, AiError, aiRewrite, aiWriter, ComposeError, createPost, reviewDetail, updatePost, type RewriteAction, type Schedule } from '@kdan-social/core';
+import { aiAdapt, AiError, aiRewrite, aiWriter, ComposeError, createPost, listDrafts, reviewDetail, saveDraft, updatePost, type RewriteAction, type Schedule } from '@kdan-social/core';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -25,6 +25,8 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   let payload: {
     /** Set when an existing post is being changed. */
     postId?: string;
+    /** Set when a saved draft is saved again or scheduled. */
+    draftId?: string;
     body: string;
     perAccount?: Record<string, string>;
     accountIds: string[];
@@ -40,24 +42,34 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   let target: string | null = null;
   // Uploads are signed under the workspace's own folder, so only accept those URLs back.
   const prefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/media/${workspace.id}/`;
-  // An edit may also keep the images the post already has.
+  // An edit or a reopened draft may also keep the images it already has.
   const kept = new Set<string>();
   if (payload.postId) {
     const current = await reviewDetail(getDb(), { workspaceId: workspace.id, postId: payload.postId });
     for (const m of current?.versions[0]?.media ?? []) kept.add(m.url).add(m.previewUrl ?? m.url);
   }
+  if (payload.draftId) {
+    const [draft] = (await listDrafts(getDb(), { workspaceId: workspace.id })).filter((d) => d.post.id === payload.draftId);
+    for (const m of draft?.versions[0]?.media ?? []) kept.add(m.url).add(m.previewUrl ?? m.url);
+  }
+  const asDraft = formData.get('intent') === 'draft';
+  if (asDraft && payload.postId) return { error: '已排程的貼文不能存成草稿。' };
   if (payload.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => u.startsWith(prefix) || kept.has(u)))) return { error: '圖片來源不正確，請重新上傳。' };
   try {
-    const { postId, body, perAccount, accountIds, media, schedule, viewerTimeZone } = payload;
+    const { postId, draftId, body, perAccount, accountIds, media, schedule, viewerTimeZone } = payload;
     const who = { workspaceId: workspace.id, actor: user.email, role };
-    if (postId) {
+    if (asDraft) {
+      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media });
+      revalidatePath('/app', 'layout');
+      target = `/app/channels/${accountIds[0]}?tab=drafts&notice=${encodeURIComponent('已存成草稿')}`;
+    } else if (postId) {
       const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, schedule, viewerTimeZone });
       revalidatePath('/app', 'layout');
       // `redirect` throws, so it must stay outside this try; remember where to go.
       target = `/app/approvals?post=${postId}&notice=${encodeURIComponent(approved ? '已儲存，貼文會照排定時間發出' : '已重新送審')}`;
     } else {
       if (schedule.mode === 'keep') return { error: '新貼文要選擇發布時間。' };
-      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, schedule, viewerTimeZone });
+      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, schedule, viewerTimeZone, draftId });
     }
   } catch (e) {
     if (e instanceof ComposeError) return { error: e.message };

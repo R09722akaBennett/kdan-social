@@ -22,6 +22,7 @@ import { CreateWorkspaceForm } from '@/components/create-workspace';
 import { getDb, signupCodes } from '@/lib/server';
 import { NoticeToast } from '@/components/toast';
 import { ConnectDialog } from '@/components/connect-dialog';
+import Link from 'next/link';
 
 const NOTICE: Record<string, [string, string]> = {
   invite_used: ['warn', '這個邀請連結已經用過或被撤回了，請邀請你的人再傳一次。'],
@@ -297,7 +298,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   return (
                     <div key={a.id} className="row" style={{ padding: '8px 18px', gap: 10, flexWrap: 'nowrap' }}>
                       <Pf pf={a.platform} />
-                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                      <Link href={`/app/channels/${a.id}`} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'inherit' }}>{a.name}</Link>
                       <span className="num" style={{ fontWeight: 500 }}>{f ? fmtN(f.followers) : '—'}</span>
                       <span className="tiny" style={{ width: 64, textAlign: 'right', color: bad ? 'var(--err)' : 'var(--ok)' }}>{tag}</span>
                     </div>

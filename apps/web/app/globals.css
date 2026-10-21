@@ -366,3 +366,27 @@ th:last-child, td:last-child { padding-right: 18px; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .connect-scrim, .connect-dialog { animation: none; } }
+
+/* One account's page, after Buffer's channel view: tabs, then posts by day. */
+.channel-avatar { width: 44px; height: 44px; border-radius: 12px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--surface); border: 1px solid var(--line); }
+.channel-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.channel-tabs a { display: flex; align-items: center; gap: 6px; padding: 10px 12px; color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.channel-tabs a:hover { color: var(--ink); }
+.channel-tabs a[aria-current='page'] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.channel-count { font-size: 12px; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--line-soft); color: var(--ink-2); text-align: center; }
+.channel-welcome { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; padding: 20px 22px; }
+.channel-welcome-art { flex: 0 1 220px; display: flex; flex-direction: column; gap: 8px; }
+.channel-welcome-row { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--sunken); }
+.channel-welcome-thumb { width: 26px; height: 26px; border-radius: 6px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
+.skel-static { display: block; height: 8px; border-radius: 4px; background: var(--line); }
+.channel-days { gap: 24px; max-width: 760px; }
+.channel-day { font-size: 15px; }
+.channel-item { display: flex; gap: 14px; align-items: flex-start; }
+.channel-when { width: 76px; flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 12px; }
+.channel-card { flex: 1; min-width: 0; }
+.channel-card-body { display: flex; gap: 14px; padding: 14px 16px; }
+.channel-text { flex: 1; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.channel-thumb { width: 84px; height: 84px; flex: none; object-fit: cover; border-radius: 8px; background: var(--sunken); }
+.channel-error { margin: 0 16px 12px; padding: 8px 10px; border-radius: 8px; background: var(--err-soft); color: var(--err); }
+.channel-card-foot { gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line-soft); }
+@media (max-width: 600px) { .channel-item { flex-direction: column; gap: 6px; } .channel-when { width: auto; flex-direction: row; align-items: center; padding-top: 0; } .channel-thumb { width: 64px; height: 64px; } }
