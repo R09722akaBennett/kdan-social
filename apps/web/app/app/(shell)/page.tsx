@@ -21,6 +21,7 @@ import { dismissOnboardingAction, signOut } from '@/app/app/actions';
 import { CreateWorkspaceForm } from '@/components/create-workspace';
 import { getDb, signupCodes } from '@/lib/server';
 import { NoticeToast } from '@/components/toast';
+import { ConnectDialog } from '@/components/connect-dialog';
 
 const NOTICE: Record<string, [string, string]> = {
   invite_used: ['warn', '這個邀請連結已經用過或被撤回了，請邀請你的人再傳一次。'],
@@ -123,7 +124,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const note: [string, string] | undefined = notice ? NOTICE[notice] ?? ['ok', notice] : undefined;
   // After Buffer's First Steps cards, with HoneyBook's count and Hootsuite's dismiss.
   const steps = [
-    { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false, action: '連結帳號' },
+    { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false, action: '連結帳號', connect: true },
     { title: '送一則測試貼文', detail: '在「帳號與群組」按「送一則測試 dry-run」，看它從排程走到記錄，不會真的發出。', href: '/app/channels', done: progress.testRun, optional: false, action: '送測試貼文' },
     { title: '把帳號分群組', detail: '例如依國家、子品牌或門市分，發文時可以一鍵選取一組帳號。', href: '/app/channels#groups', done: progress.groups, optional: true, action: '建立群組' },
     { title: '設定品牌語氣', detail: 'AI 改寫與試寫都會照這裡的語氣、禁用詞與詞彙表。', href: '/app/voice', done: progress.voice, optional: true, action: '設定語氣' },
@@ -173,7 +174,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   <span className="step-check" aria-label={st.done ? '已完成' : '未完成'}><Icon name="tick" size={12} stroke={2.6} /></span>
                 </div>
                 <p className="small muted" style={{ margin: 0, flex: 1 }}>{st.detail}</p>
-                {st.done ? <span className="small" style={{ color: 'var(--ok)' }}>已完成</span> : <a href={st.href} className="btn btn-sm" style={{ alignSelf: 'flex-start' }}>{st.action}</a>}
+                {st.done ? <span className="small" style={{ color: 'var(--ok)' }}>已完成</span> : 'connect' in st ? <span style={{ alignSelf: 'flex-start' }}><ConnectDialog className="btn btn-sm">{st.action}</ConnectDialog></span> : <a href={st.href} className="btn btn-sm" style={{ alignSelf: 'flex-start' }}>{st.action}</a>}
               </div>
             ))}
           </div>
@@ -277,7 +278,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
               <span className="empty-icon"><Icon name="link" size={20} /></span>
               <strong style={{ fontWeight: 600 }}>還沒有連結帳號</strong>
               <span className="small muted">連結後，這裡會列出每個帳號的粉絲數和變化。</span>
-              <a href="/app/channels#add" className="btn btn-sm" style={{ marginTop: 6 }}>連結帳號</a>
+              <span style={{ marginTop: 6 }}><ConnectDialog className="btn btn-sm">連結帳號</ConnectDialog></span>
             </div>
           )}
           {cards.map((g) => {

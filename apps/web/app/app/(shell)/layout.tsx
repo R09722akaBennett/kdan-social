@@ -8,12 +8,13 @@ import { signOut, switchWorkspaceAction } from '@/app/app/actions';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import { PlatformMark } from '@/components/brand-icons';
 import { ConnectProgress } from '@/components/connect-progress';
+import { ConnectDialog } from '@/components/connect-dialog';
 import Link from 'next/link';
 
 const PLATFORMS = [
-  { pf: 'facebook', label: 'Facebook 粉專', href: '/app/connect/facebook' },
-  { pf: 'instagram', label: 'Instagram', href: '/app/connect/facebook' },
-  { pf: 'line', label: 'LINE 官方帳號', href: '/app/connect/line' },
+  { pf: 'facebook', label: 'Facebook 粉專' },
+  { pf: 'instagram', label: 'Instagram' },
+  { pf: 'line', label: 'LINE 官方帳號' },
 ] as const;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -24,7 +25,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const ws = membership.workspace;
   const [groups, accounts, counts, unread, workspaces] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id }), listMemberships(db, user.id)]);
   const expired = accounts.filter((a) => a.status !== 'active');
-  // Instagram connects through the Facebook login for now, so both lead there.
   const missing = PLATFORMS.filter((p) => !accounts.some((a) => a.platform === p.pf));
   const nav: NavItem[] = [
     { href: '/app', label: '總覽', icon: 'home' },
@@ -56,11 +56,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <div className="side-section-title">連結帳號</div>
           {missing.map((p) => (
-            <a key={p.pf} href={p.href} className="market-link">
+            <ConnectDialog key={p.pf} start={p.pf} className="market-link side-connect">
               <PlatformMark pf={p.pf} size={18} />
               <span style={{ flex: 1 }}>{p.label}</span>
               <Icon name="plus" size={14} />
-            </a>
+            </ConnectDialog>
           ))}
         </div>
       )}

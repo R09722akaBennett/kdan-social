@@ -6,6 +6,7 @@ import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { deleteGroupAction, queueTest, saveGroupAction, setTimeZoneAction } from '@/app/app/actions';
 import { NoticeToast } from '@/components/toast';
+import { ConnectDialog } from '@/components/connect-dialog';
 
 const KIND = { facebook: 'Facebook 粉專', instagram: 'Instagram 商業帳號', line: 'LINE 官方帳號' } as const;
 
@@ -33,7 +34,7 @@ export default async function Channels({ searchParams }: { searchParams: Promise
           <h1>帳號與群組</h1>
           <div className="sub">連結的社群帳號，以及你自己分的群組。群組讓你發文時一鍵選取一組帳號。</div>
         </div>
-        <a className="btn btn-primary" href="#add">連結新帳號</a>
+        <ConnectDialog className="btn btn-primary">連結新帳號</ConnectDialog>
       </header>
 
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
