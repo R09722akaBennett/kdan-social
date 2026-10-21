@@ -31,6 +31,9 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
     perAccount?: Record<string, string>;
     accountIds: string[];
     media: Array<{ url: string; previewUrl?: string; alt?: string }>;
+    firstComment?: string;
+    /** Open a fresh composer afterwards instead of the list. */
+    createAnother?: boolean;
     schedule: Schedule | { mode: 'keep' };
     viewerTimeZone: string;
   };
@@ -56,20 +59,22 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   if (asDraft && payload.postId) return { error: '已排程的貼文不能存成草稿。' };
   if (payload.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => u.startsWith(prefix) || kept.has(u)))) return { error: '圖片來源不正確，請重新上傳。' };
   try {
-    const { postId, draftId, body, perAccount, accountIds, media, schedule, viewerTimeZone } = payload;
+    const { postId, draftId, body, perAccount, accountIds, media, firstComment, createAnother, schedule, viewerTimeZone } = payload;
     const who = { workspaceId: workspace.id, actor: user.email, role };
     if (asDraft) {
-      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media });
+      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media, firstComment });
       revalidatePath('/app', 'layout');
-      target = `/app/channels/${accountIds[0]}?tab=drafts&notice=${encodeURIComponent('已存成草稿')}`;
+      target = createAnother ? `/app/posts/new?another=1&notice=${encodeURIComponent('已存成草稿，接著寫下一篇')}`
+        : `/app/channels/${accountIds[0]}?tab=drafts&notice=${encodeURIComponent('已存成草稿')}`;
     } else if (postId) {
-      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, schedule, viewerTimeZone });
+      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, firstComment, schedule, viewerTimeZone });
       revalidatePath('/app', 'layout');
       // `redirect` throws, so it must stay outside this try; remember where to go.
       target = `/app/approvals?post=${postId}&notice=${encodeURIComponent(approved ? '已儲存，貼文會照排定時間發出' : '已重新送審')}`;
     } else {
       if (schedule.mode === 'keep') return { error: '新貼文要選擇發布時間。' };
-      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, schedule, viewerTimeZone, draftId });
+      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, firstComment, schedule, viewerTimeZone, draftId });
+      if (createAnother) target = `/app/posts/new?another=1&notice=${encodeURIComponent(role === 'owner' || role === 'admin' ? '已排程，接著寫下一篇' : '已送出審核，接著寫下一篇')}`;
     }
   } catch (e) {
     if (e instanceof ComposeError) return { error: e.message };

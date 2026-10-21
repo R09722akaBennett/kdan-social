@@ -26,7 +26,7 @@ export default async function ConnectMeta({ searchParams }: { searchParams: Prom
         </div>
       )}
       {optional.length > 0 && (
-        <div className="card card-pad small" role="status">沒有授權 {optional.join('、')}：帳號可以正常發文，但成效頁會缺部分數字（歷史貼文、互動數或觸及與觀看數）。之後想補上，重新連結一次並勾選即可。</div>
+        <div className="card card-pad small" role="status">沒有授權 {optional.join('、')}：帳號可以正常發文，但成效頁會缺部分數字（歷史貼文、互動數或觸及與觀看數），第一則留言也會留不上去。之後想補上，重新連結一次並勾選即可。</div>
       )}
             {error === 'none' && <p className="small" style={{ color: 'var(--err)' }}>請至少勾選一個粉專。</p>}
       <form action={saveMetaConnection} className="card">

@@ -50,6 +50,7 @@ export type EditPost = {
   main: string;
   custom: Record<string, string>;
   media: Array<{ url: string; previewUrl?: string; alt?: string }>;
+  firstComment?: string;
   /** Review comments, newest last, shown above the editor as Later shows a post's activity. */
   notes: Array<{ author: string; body: string; at: string }>;
   /** The current times, in words, for the "keep" option. */
@@ -58,15 +59,17 @@ export type EditPost = {
 
 /** A post proposed elsewhere (the AI assistant's plan), to start a new post from. */
 /** A saved draft being opened again; it can still change accounts and be scheduled. */
-export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media'>;
+export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media' | 'firstComment'>;
 
 export type StartPost = { accountIds: string[]; main: string; date?: string; time?: string };
 
 const ACTION_LABEL = { rephrase: '改寫', shorten: '縮短', casual: '更口語', formal: '更正式', tags: '建議標籤', ask: '依你的指示修改' } as const;
 type Action = keyof typeof ACTION_LABEL;
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, draft, start, aiReady, banned }: {
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, draft, start, another, aiReady, banned }: {
   workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost; draft?: DraftPost; start?: StartPost;
+  /** Keep 「再建立一篇」 ticked, as it was when this composer was reopened after a post. */
+  another?: boolean;
   aiReady: boolean; banned: string[];
 }) {
   // What the form starts from: the post being edited or the draft being reopened.
@@ -78,6 +81,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((seed?.accountIds ?? start?.accountIds ?? []).map((id) => [id, true])));
   const [main, setMain] = useState(seed?.main ?? start?.main ?? '');
+  const [firstComment, setFirstComment] = useState(seed?.firstComment ?? '');
+  const [createAnother, setCreateAnother] = useState(!!another);
   // Text customised for one account; an account without an entry uses the main text.
   const [custom, setCustom] = useState<Record<string, string>>(seed?.custom ?? {});
   const [customizing, setCustomizing] = useState(Object.keys(seed?.custom ?? {}).length > 0);
@@ -102,6 +107,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   // An edited post keeps its accounts, so only those are offered.
   const offered = edit ? accounts.filter((a) => edit.accountIds.includes(a.id)) : accounts;
   const chosen = offered.filter((a) => on[a.id]);
+  const commentable = chosen.filter((a) => a.platform !== 'line');
   // Same rule as createPost on the server, so the preview shows exactly what is sent.
   const textFor = (id: string) => (custom[id] ?? main).trim();
   const groupState = (g: Group) => {
@@ -204,6 +210,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
     perAccount: Object.fromEntries(chosen.filter((a) => custom[a.id] !== undefined).map((a) => [a.id, custom[a.id]])),
     accountIds: chosen.map((a) => a.id),
     media: media.map(({ url, previewUrl, alt }) => ({ url, previewUrl, ...(alt ? { alt } : {}) })),
+    firstComment: commentable.length ? firstComment : '',
+    createAnother: !edit && createAnother,
     schedule: mode === 'now' || mode === 'keep' ? { mode } : { mode, date, time },
     viewerTimeZone: viewerTz,
   });
@@ -229,7 +237,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const customised = chosen.filter((a) => custom[a.id] !== undefined).length;
 
   return (
-    <form action={action} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    // Enter in a one-line field would submit with the first button, 「存成草稿」; only buttons submit here.
+    <form action={action} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }} onKeyDown={(e) => { if (e.key === 'Enter' && e.target instanceof HTMLInputElement) e.preventDefault(); }}>
       <input type="hidden" name="payload" value={payload} />
       <header className="row" style={{ padding: '12px 24px', background: 'var(--surface)', borderBottom: '1px solid var(--line)', gap: 12 }}>
         <a href="/app" className="btn icon-btn" aria-label="返回總覽" style={{ border: 0 }}><Icon name="chevronLeft" size={20} stroke={2} /></a>
@@ -313,6 +322,16 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
               )}
             </div>
             {uploadError && <p className="small" style={{ color: 'var(--err)', margin: '0 16px 12px' }}>{uploadError}</p>}
+            {/* After Buffer's First Comment row; LINE has no comments, so it is hidden for LINE-only posts. */}
+            {commentable.length > 0 && (
+              <div className="row" style={{ padding: '10px 16px', borderTop: '1px solid var(--line-soft)', gap: 10, flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                <label htmlFor="first-comment" className="small" style={{ fontWeight: 600, width: 84, flex: 'none', paddingTop: 7 }}>第一則留言</label>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <input id="first-comment" className="input" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} placeholder="發出後留在貼文底下，例如連結或 hashtag（選填）" style={{ minHeight: 34 }} />
+                  {firstComment.trim() && commentable.length < chosen.length && <div className="tiny muted" style={{ marginTop: 4 }}>LINE 沒有留言功能，只會留在 Facebook 與 Instagram。</div>}
+                </div>
+              </div>
+            )}
             <div className="row" style={{ padding: '10px 16px', borderTop: '1px solid var(--line-soft)', gap: 6 }}>
               {aiReady ? (
                 <>
@@ -508,6 +527,12 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
           </>
         )}
         <span className="small num">{scheduleText}</span>
+        {!edit && (
+          <label className="row small" style={{ gap: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={createAnother} onChange={(e) => setCreateAnother(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+            再建立一篇
+          </label>
+        )}
         <div className="row spacer">
           {(state.error || blocking > 0) && <span className="tiny" style={{ color: 'var(--err)' }}>{state.error ?? `還有 ${blocking} 項要處理才能送出`}</span>}
           {!state.error && !blocking && <span className="tiny muted">{reviewed ? '送出後由擁有者或管理員核准' : '你送出的貼文會直接排程'}</span>}

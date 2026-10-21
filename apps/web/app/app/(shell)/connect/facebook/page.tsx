@@ -17,6 +17,7 @@ const OPTIONAL: Use[] = [
   { icon: 'comment', title: '讀取粉專貼文與互動', why: '匯入過去 60 天的貼文，計算心情、留言與分享。', scopes: ['pages_read_user_content'] },
   { icon: 'chart', title: '讀取粉專成效', why: '觸及、觀看、追蹤增減與粉絲地區。', scopes: ['read_insights'] },
   { icon: 'chart', title: '讀取 Instagram 成效', why: '觸及、觀看、收藏、分享與粉絲輪廓。', scopes: ['instagram_manage_insights'] },
+  { icon: 'comment', title: '留下第一則留言', why: '貼文發出後，以粉專或 IG 帳號的身分在底下留你寫好的第一則留言。', scopes: ['pages_manage_engagement', 'instagram_manage_comments'] },
 ];
 
 function Row({ u }: { u: Use }) {
@@ -68,8 +69,8 @@ export default async function ConnectFacebook() {
       <section className="card" aria-labelledby="h-optional">
         <div className="card-head">
           <div>
-            <h2 id="h-optional">成效頁用的權限（選用）</h2>
-            <div className="small muted">不授權也能正常發文，只是成效頁會少這些數字。</div>
+            <h2 id="h-optional">選用的權限</h2>
+            <div className="small muted">不授權也能正常發文，只是成效頁會少這些數字，也不能留第一則留言。</div>
           </div>
         </div>
         {OPTIONAL.map((u) => <Row key={u.title} u={u} />)}
@@ -81,6 +82,7 @@ export default async function ConnectFacebook() {
           <h2 id="h-wont" style={{ fontSize: 15 }}>kdan-social 不會做的事</h2>
           <ul className="small" style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <li>不會讀取或回覆私訊。</li>
+            <li>不會回覆、隱藏或刪除別人的留言；只會留下你在貼文裡寫好的第一則留言。</li>
             <li>不會碰你的個人 Facebook 帳號、好友或個人動態。</li>
             <li>不會在沒有排程的時候發文；新工作區的對外發文預設是關閉的。</li>
             <li>存取權杖加密保存，不會顯示在畫面上。隨時可以在 Facebook 設定的「商業整合」移除授權。</li>

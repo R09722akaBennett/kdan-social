@@ -129,6 +129,13 @@ export function errorText(raw: string | null): string | null {
   return ERRORS.find(([re]) => re.test(raw))?.[1] ?? `發送失敗：${raw}`;
 }
 
+/** Why a first comment did not go up, in words a person can act on. */
+export function commentErrorText(raw: string): string {
+  // Accounts connected before the comment scopes were asked for lack them until reconnected.
+  if (/pages_manage_engagement|instagram_manage_comments|\(#(10|200)\)|permission/i.test(raw)) return '第一則留言沒有留上去：帳號還沒授權留言，請到帳號頁重新連結並允許留言權限。';
+  return `第一則留言沒有留上去：${raw}`;
+}
+
 /**
  * A section with nothing in it yet: what will appear here and the one action that
  * fills it, after Klaviyo's and Whop's empty dashboards.

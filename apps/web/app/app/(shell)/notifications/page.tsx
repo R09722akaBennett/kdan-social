@@ -8,6 +8,7 @@ const LOOK: Record<string, [IconName, string]> = {
   'publish.failed': ['alert', 'var(--err)'],
   'account.expired': ['alert', 'var(--err)'],
   'publish.needs_check': ['alert', 'var(--warn)'],
+  'publish.comment_failed': ['comment', 'var(--warn)'],
   'publish.missed': ['alert', 'var(--warn)'],
   'review.requested': ['check', 'var(--accent)'],
   'review.approved': ['check', 'var(--ok)'],

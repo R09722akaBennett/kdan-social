@@ -2,7 +2,7 @@ import { formatInZone, reviewDetail } from '@kdan-social/core';
 import { notFound } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { ConfirmSubmit } from '@/components/confirm';
-import { Chip, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/ui';
+import { Chip, commentErrorText, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { cancelPostAction } from '@/app/app/actions';
@@ -91,6 +91,8 @@ export default async function PostDetail({ params, searchParams }: { params: Pro
                   {link && <a className="small" href={link} target="_blank" rel="noreferrer">看貼文</a>}
                 </div>
                 {v.lastError && v.taskStatus !== 'published' && <span className="tiny" style={{ color: 'var(--err)' }}>{errorText(v.lastError)}</span>}
+                {v.commentError && <span className="tiny" style={{ color: 'var(--warn)' }}>{commentErrorText(v.commentError)}</span>}
+                {v.commentId && <span className="tiny muted">已留下第一則留言</span>}
               </div>
             </div>
           );

@@ -2,10 +2,11 @@ import { aiConfigured, getVoice, lineClient, lineUsage, listAccounts, listDrafts
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { supabaseEnv } from '@/lib/supabase';
+import { NoticeToast } from '@/components/toast';
 import Composer from './Composer';
 
 // Full-page, without the sidebar, as in the prototype.
-export default async function NewPost({ searchParams }: { searchParams: Promise<{ plan?: string; item?: string; draft?: string; account?: string }> }) {
+export default async function NewPost({ searchParams }: { searchParams: Promise<{ plan?: string; item?: string; draft?: string; account?: string; another?: string; notice?: string }> }) {
   const { user, workspace, role } = await requireWorkspace();
   const sp = await searchParams;
   const db = getDb();
@@ -19,25 +20,30 @@ export default async function NewPost({ searchParams }: { searchParams: Promise<
     getVoice(db, workspace.id),
   ]);
   return (
-    <Composer
-      workspace={workspace.name}
-      role={role}
-      groups={groups.map(({ id, name }) => ({ id, name }))}
-      accounts={accounts.map(({ id, groupId, timeZone, platform, name, status }) => ({ id, groupId, timeZone, platform, name, status }))}
-      supabase={supabaseEnv()}
-      aiReady={aiConfigured()}
-      banned={voice.banned}
-      lineUsage={usage.map(({ accountId, quota, audience, error }) => ({ accountId, quota, audience, error }))}
-      draft={draft && {
-        postId: draft.post.id,
-        accountIds: draft.versions.map((v) => v.accountId),
-        main: draft.post.body ?? '',
-        custom: Object.fromEntries(draft.versions.filter((v) => v.body !== (draft.post.body ?? '')).map((v) => [v.accountId, v.body])),
-        media: draft.versions[0]?.media ?? [],
-      }}
-      start={item ? { accountIds: item.accountIds.filter((id) => accounts.some((a) => a.id === id)), main: item.body, date: item.date, time: item.time }
-        // Opened from an account's page: that account starts ticked.
-        : accounts.some((a) => a.id === sp.account) ? { accountIds: [sp.account!], main: '' } : undefined}
-    />
+    <>
+      {sp.notice && <NoticeToast text={sp.notice} />}
+      <Composer
+        workspace={workspace.name}
+        role={role}
+        groups={groups.map(({ id, name }) => ({ id, name }))}
+        accounts={accounts.map(({ id, groupId, timeZone, platform, name, status }) => ({ id, groupId, timeZone, platform, name, status }))}
+        supabase={supabaseEnv()}
+        aiReady={aiConfigured()}
+        banned={voice.banned}
+        lineUsage={usage.map(({ accountId, quota, audience, error }) => ({ accountId, quota, audience, error }))}
+        draft={draft && {
+          postId: draft.post.id,
+          accountIds: draft.versions.map((v) => v.accountId),
+          main: draft.post.body ?? '',
+          custom: Object.fromEntries(draft.versions.filter((v) => v.body !== (draft.post.body ?? '')).map((v) => [v.accountId, v.body])),
+          media: draft.versions[0]?.media ?? [],
+          firstComment: draft.post.firstComment ?? '',
+        }}
+        another={sp.another === '1'}
+        start={item ? { accountIds: item.accountIds.filter((id) => accounts.some((a) => a.id === id)), main: item.body, date: item.date, time: item.time }
+          // Opened from an account's page: that account starts ticked.
+          : accounts.some((a) => a.id === sp.account) ? { accountIds: [sp.account!], main: '' } : undefined}
+      />
+    </>
   );
 }

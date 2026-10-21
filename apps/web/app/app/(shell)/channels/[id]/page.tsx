@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { PlatformMark } from '@/components/brand-icons';
 import { ChannelWelcome } from '@/components/channel-welcome';
 import { NoticeToast } from '@/components/toast';
-import { Chip, EmptyState, Icon, localTime, PLATFORM, zoneName } from '@/components/ui';
+import { Chip, commentErrorText, EmptyState, Icon, localTime, PLATFORM, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 
@@ -125,6 +125,7 @@ export default async function Channel({ params, searchParams }: { params: Promis
                         )}
                       </div>
                       {item.status === 'failed' && item.lastError && <div className="small channel-error">{item.lastError}</div>}
+                      {item.commentError && <div className="small channel-error channel-warn">{commentErrorText(item.commentError)}</div>}
                       <div className="row channel-card-foot">
                         <span className="tiny muted" style={{ flex: 1, minWidth: 0 }}>{item.createdBy ? `${item.createdBy} 建立` : ''}{item.media.length > 1 ? ` · ${item.media.length} 張圖片` : ''}</span>
                         <Link href={href} className="btn btn-sm">{item.status === 'draft' ? '繼續編輯' : '查看'}</Link>

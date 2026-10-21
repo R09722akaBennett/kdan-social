@@ -390,3 +390,4 @@ th:last-child, td:last-child { padding-right: 18px; }
 .channel-error { margin: 0 16px 12px; padding: 8px 10px; border-radius: 8px; background: var(--err-soft); color: var(--err); }
 .channel-card-foot { gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line-soft); }
 @media (max-width: 600px) { .channel-item { flex-direction: column; gap: 6px; } .channel-when { width: auto; flex-direction: row; align-items: center; padding-top: 0; } .channel-thumb { width: 64px; height: 64px; } }
+.channel-warn { background: var(--warn-soft); color: var(--warn); }
