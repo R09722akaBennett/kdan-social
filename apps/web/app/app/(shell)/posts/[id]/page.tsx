@@ -6,6 +6,7 @@ import { Chip, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { cancelPostAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 const TASK: Record<string, ['ok' | 'plan' | 'warn' | 'err' | 'neutral', string]> = {
   scheduled: ['plan', '已排程'], running: ['plan', '發送中'], published: ['ok', '已發布'], dry_run: ['neutral', 'dry-run'],
@@ -59,7 +60,7 @@ export default async function PostDetail({ params, searchParams }: { params: Pro
         </div>
       </header>
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
 
       <div className="row" style={{ gap: 8 }}>
         {cancelled ? <Chip tone="neutral">已取消</Chip> : <Chip tone={REVIEW[d.state]![0]}>{REVIEW[d.state]![1]}</Chip>}

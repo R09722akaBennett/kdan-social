@@ -323,3 +323,15 @@ th:last-child, td:last-child { padding-right: 18px; }
 .connect-bar span { height: 5px; border-radius: 3px; background: var(--line-soft); transition: background .3s; }
 .connect-bar span[data-on='true'] { background: var(--ok); }
 .connect-progress + .side-foot { margin-top: 0; }
+
+/* Notice toast: floats at the top of the page, after Buffer's success toast. */
+.notice-toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(560px, calc(100vw - 32px)); padding: 10px 10px 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 32, 79, .12); font-size: 14px; animation: toast-in .25s ease-out both; }
+.notice-mark { width: 20px; height: 20px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center; color: #fff; background: var(--ok); }
+.notice-warn .notice-mark { background: var(--warn); }
+.notice-err .notice-mark { background: var(--err); }
+.notice-plan .notice-mark { background: var(--accent); }
+.notice-close { border: 0; background: none; padding: 4px; border-radius: 6px; color: var(--ink-3); cursor: pointer; display: flex; }
+.notice-close:hover { background: var(--line-soft); color: var(--ink); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+@media (prefers-reduced-motion: reduce) { .notice-toast { animation: none; } }

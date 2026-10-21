@@ -4,6 +4,7 @@ import { ROLE_TEXT } from '@/components/roles';
 import { requireWorkspace } from '@/lib/auth';
 import { appUrl, getDb } from '@/lib/server';
 import { changeRoleAction, inviteAction, removeMemberAction, revokeInviteAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 // After Buffer's Team Members (list with Owner / You tags) and User Interviews' pending invites.
 export default async function Members({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -26,7 +27,7 @@ export default async function Members({ searchParams }: { searchParams: Promise<
       </header>
 
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
 
       <section className="card" aria-labelledby="h-members">
         <div className="card-head"><h2 id="h-members">成員 <span className="small muted">{members.length}</span></h2></div>

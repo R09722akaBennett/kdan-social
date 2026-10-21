@@ -3,6 +3,7 @@ import { fmtN, zoneOptions } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { togglePublishing, updateSettingsAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 // Sections after Buffer's General settings: one card per concern, each saved on its own.
 export default async function Settings({ searchParams }: { searchParams: Promise<{ notice?: string; error?: string }> }) {
@@ -21,7 +22,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         </div>
       </header>
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
 
       <form action={updateSettingsAction} className="card card-pad stack" style={{ gap: 14 }} aria-labelledby="h-general">
         <h2 id="h-general">工作區</h2>

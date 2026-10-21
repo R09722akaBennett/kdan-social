@@ -3,6 +3,7 @@ import { VoiceEditor } from '@/components/voice';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { sampleAction, saveVoiceAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 // After Customer.io's Tone & Voice (sliders with a live preview) and Jasper's brand voice
 // (a description plus example posts), as the prototype lays them out.
@@ -20,7 +21,7 @@ export default async function BrandVoice({ searchParams }: { searchParams: Promi
         </div>
       </header>
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
       <VoiceEditor
         initial={voice}
         initialGroups={Object.fromEntries(groupVoices)}

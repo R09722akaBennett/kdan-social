@@ -4,6 +4,7 @@ import { Chip, EmptyState, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { reviewAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 // One decision per post, as Assembly's approvals inbox and Later's "Request Changes" card.
 const DEC: Record<ReviewState, ['ok' | 'warn' | 'err', string]> = { approved: ['ok', '已核准'], pending: ['warn', '待審核'], changes_requested: ['err', '要求修改'] };
@@ -47,7 +48,7 @@ export default async function Approvals({ searchParams }: { searchParams: Promis
       </header>
 
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <section className="card" aria-label="送審清單" style={{ flex: '1 1 280px', maxWidth: 380, overflow: 'hidden' }}>

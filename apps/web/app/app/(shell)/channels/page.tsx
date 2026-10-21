@@ -5,6 +5,7 @@ import { EmptyState, GroupTag, Pf, PLATFORM, fmtN, zoneOptions } from '@/compone
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { deleteGroupAction, queueTest, saveGroupAction, setTimeZoneAction } from '@/app/app/actions';
+import { NoticeToast } from '@/components/toast';
 
 const KIND = { facebook: 'Facebook 粉專', instagram: 'Instagram 商業帳號', line: 'LINE 官方帳號' } as const;
 
@@ -36,7 +37,7 @@ export default async function Channels({ searchParams }: { searchParams: Promise
       </header>
 
       {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
-      {sp.notice && <div className="card card-pad small" role="status">{sp.notice}</div>}
+      {sp.notice && <NoticeToast text={sp.notice} />}
 
       <section className="card" aria-labelledby="h-accounts" style={{ overflow: 'visible' }}>
         <div className="card-head">
