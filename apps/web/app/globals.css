@@ -440,3 +440,11 @@ th:last-child, td:last-child { padding-right: 18px; }
 .tag-row { display: flex; flex-wrap: wrap; gap: 4px; }
 .channel-card-body { flex-wrap: wrap; }
 .channel-tags { flex-basis: 100%; }
+
+/* Posting goal options, after Buffer's: a number badge, the rhythm, ticked when chosen. */
+.goal-option { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.goal-option[aria-checked='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.goal-num { width: 34px; height: 34px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+.slot-row { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border: 1px dashed var(--control); border-radius: var(--radius); color: var(--ink-2); background: var(--surface); }
+.slot-row:hover { border-color: var(--accent); color: var(--accent); }
+.goal-progress { display: inline-flex; align-items: center; gap: 6px; }

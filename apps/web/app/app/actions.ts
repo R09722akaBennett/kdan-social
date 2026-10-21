@@ -1,6 +1,6 @@
 'use server';
 
-import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, GoalError, setPostingGoal, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -392,4 +392,18 @@ export async function deleteTagAction(formData: FormData) {
   await deleteTag(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') });
   revalidatePath('/app', 'layout');
   redirect(`/app/settings?notice=${encodeURIComponent('已刪除標籤')}#tags`);
+}
+
+export async function setGoalAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  const accountId = String(formData.get('accountId') ?? '');
+  const goal = formData.get('clear') ? null : Number(formData.get('goal'));
+  try {
+    await setPostingGoal(getDb(), { workspaceId: workspace.id, accountId, goal, actor: user.email });
+  } catch (e) {
+    if (e instanceof GoalError) redirect(`/app/channels/${accountId}?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath(`/app/channels/${accountId}`);
+  redirect(`/app/channels/${accountId}?notice=${encodeURIComponent(goal == null ? '已清除發文目標' : `目標設為每週 ${goal} 篇`)}`);
 }

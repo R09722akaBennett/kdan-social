@@ -1,4 +1,6 @@
-import { channelAccount, channelCounts, channelItems, clockInZone, dayInZone, listGroups, listTags, tagsForPosts, type ChannelItem, type ChannelTab } from '@kdan-social/core';
+import { bestHour, channelAccount, channelCounts, channelItems, clockInZone, dayInZone, listGroups, listTags, postingSlots, publishedThisWeek, tagsForPosts, type ChannelItem, type ChannelTab, type Slot } from '@kdan-social/core';
+import { GoalDialog } from '@/components/goal-dialog';
+import { setGoalAction } from '@/app/app/actions';
 import { FilterMenu } from '@/components/groups';
 import { TagPill } from '@/components/tags';
 import Link from 'next/link';
@@ -48,7 +50,7 @@ function dayHeading(at: Date, timeZone: string, now: Date) {
  * One account's posts, after Buffer's channel view: tabs for what is scheduled, drafted,
  * waiting for review and sent, each listed by day on the account's own clock.
  */
-export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; view?: string; tag?: string | string[]; notice?: string }> }) {
+export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; view?: string; tag?: string | string[]; notice?: string; error?: string }> }) {
   const [{ id }, sp, { workspace }] = await Promise.all([params, searchParams, requireWorkspace()]);
   const db = getDb();
   const account = await channelAccount(db, { workspaceId: workspace.id, accountId: id });
@@ -65,6 +67,16 @@ export default async function Channel({ params, searchParams }: { params: Promis
     listTags(db, workspace.id),
   ]);
   const postTags = await tagsForPosts(db, items.map((i) => i.postId));
+  const goal = account.postingGoal;
+  // Open slots go into the queue only, around what is already scheduled or waiting for review.
+  const [best, sentWeek, inReview] = await Promise.all([
+    goal ? bestHour(db, { accountId: id, timeZone: account.timeZone, platform: account.platform }) : null,
+    goal ? publishedThisWeek(db, { accountId: id, timeZone: account.timeZone }) : 0,
+    goal && tab === 'queue' ? channelItems(db, { workspaceId: workspace.id, accountId: id, tab: 'approvals' }) : [],
+  ]);
+  const slots: Slot[] = goal && best && tab === 'queue' && !tagIds.length
+    ? postingSlots({ goal, hour: best.hour, timeZone: account.timeZone, now: new Date(), scheduled: [...items, ...inReview].map((i) => i.runAt!).filter(Boolean) })
+    : [];
   // Switching tabs keeps the tag filter.
   const tagQs = [sp.tag ?? []].flat().map((t) => `&tag=${encodeURIComponent(t)}`).join('');
   // The feed as it will look: the latest scheduled post top left, then back through what went out.
@@ -74,26 +86,42 @@ export default async function Channel({ params, searchParams }: { params: Promis
   const group = groups.find((g) => g.id === account.groupId)?.name;
   const now = new Date();
 
-  // Drafts have no time, so they sit under one heading; the rest group by day.
-  const days: Array<[string, ChannelItem[]]> = [];
-  for (const item of items) {
-    const head = item.runAt ? dayHeading(item.runAt, tz, now) : '未排程';
+  // Drafts have no time, so they sit under one heading; the rest group by day, with the
+  // queue's open slots between its posts, as Buffer's queue lists them.
+  type Entry = { kind: 'item'; item: ChannelItem; at: number } | { kind: 'slot'; slot: Slot; at: number };
+  const entries: Entry[] = [
+    ...items.map((item) => ({ kind: 'item' as const, item, at: item.runAt?.getTime() ?? 0 })),
+    ...slots.map((slot) => ({ kind: 'slot' as const, slot, at: slot.at.getTime() })),
+  ];
+  if (tab === 'queue') entries.sort((x, y) => x.at - y.at);
+  const days: Array<[string, Entry[]]> = [];
+  for (const e of entries) {
+    const at = e.kind === 'slot' ? e.slot.at : e.item.runAt;
+    const head = at ? dayHeading(at, tz, now) : '未排程';
     const last = days[days.length - 1];
-    if (last && last[0] === head) last[1].push(item);
-    else days.push([head, [item]]);
+    if (last && last[0] === head) last[1].push(e);
+    else days.push([head, [e]]);
   }
   const empty = EMPTY[tab];
 
   return (
     <main className="main">
       {sp.notice && <NoticeToast text={sp.notice} />}
+      {sp.error && <NoticeToast text={sp.error} tone="err" />}
       <header className="page-head">
         <div className="row" style={{ gap: 12, flexWrap: 'nowrap', minWidth: 0 }}>
           <span className="channel-avatar"><PlatformMark pf={account.platform} size={22} /></span>
           <div style={{ minWidth: 0 }}>
             <div className="small"><Link href="/app/channels">帳號與群組</Link> / {PLATFORM[account.platform].name}</div>
             <h1 style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{account.name}</h1>
-            <div className="sub">{group ? `${group} · ` : ''}{zoneName(tz)} {localTime(tz)}{account.status !== 'active' ? ' · 授權已失效' : ''}</div>
+            <div className="sub row" style={{ gap: 6 }}>
+              <span>{group ? `${group} · ` : ''}{zoneName(tz)} {localTime(tz)}{account.status !== 'active' ? ' · 授權已失效' : ''}</span>
+              <span aria-hidden="true">·</span>
+              {/* After Buffer's "1/5 posts sent this week" under the channel name. */}
+              <GoalDialog action={setGoalAction} accountId={account.id} current={goal} className="link-btn small">
+                {goal ? `本週已發布 ${sentWeek} / ${goal} 篇` : '設定發文目標'}
+              </GoalDialog>
+            </div>
           </div>
         </div>
         <div className="row">
@@ -143,8 +171,16 @@ export default async function Channel({ params, searchParams }: { params: Promis
       </nav>
 
       {tab === 'queue' && <ChannelWelcome />}
+      {slots.length > 0 && best && (
+        <div className="small muted">
+          虛線是照每週 {goal} 篇目標留的空時段，
+          {best.source === 'history'
+            ? `時間取自這個帳號過去 ${best.posts} 篇貼文裡互動最好的 ${String(best.hour).padStart(2, '0')}:00。`
+            : `目前用預設的 ${String(best.hour).padStart(2, '0')}:00；累積 10 篇有數字的貼文後，會改用這個帳號互動最好的時段。`}
+        </div>
+      )}
 
-      {items.length === 0 ? (
+      {entries.length === 0 ? (
         <div className="card">
           <EmptyState icon={empty.icon} title={empty.title} action={<Link href={`/app/posts/new?account=${account.id}`} className="btn btn-sm">新增貼文</Link>}>{empty.body}</EmptyState>
         </div>
@@ -154,7 +190,18 @@ export default async function Channel({ params, searchParams }: { params: Promis
           {days.map(([head, list]) => (
             <section key={head} className="stack" style={{ gap: 10 }} aria-label={head}>
               <h2 className="channel-day">{head}</h2>
-              {list.map((item) => {
+              {list.map((e) => {
+                if (e.kind === 'slot') {
+                  return (
+                    <article key={`slot-${e.at}`} className="channel-item">
+                      <div className="channel-when"><span className="num" style={{ fontWeight: 600 }}>{e.slot.time}</span></div>
+                      <Link href={`/app/posts/new?account=${account.id}&date=${e.slot.date}&time=${e.slot.time}`} className="slot-row channel-card">
+                        <Icon name="plus" size={16} />新增貼文到這個時段
+                      </Link>
+                    </article>
+                  );
+                }
+                const item = e.item;
                 const [tone, label] = item.review === 'changes_requested' ? ['err', '要求修改'] as const
                   : item.review === 'pending' ? ['warn', '待審核'] as const
                   : STATUS[item.status] ?? ['neutral', item.status];

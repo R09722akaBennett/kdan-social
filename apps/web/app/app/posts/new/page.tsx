@@ -7,7 +7,7 @@ import { templateByKey } from '@/lib/templates';
 import Composer from './Composer';
 
 // Full-page, without the sidebar, as in the prototype.
-export default async function NewPost({ searchParams }: { searchParams: Promise<{ plan?: string; item?: string; draft?: string; account?: string; idea?: string; template?: string; another?: string; notice?: string }> }) {
+export default async function NewPost({ searchParams }: { searchParams: Promise<{ plan?: string; item?: string; draft?: string; account?: string; date?: string; time?: string; idea?: string; template?: string; another?: string; notice?: string }> }) {
   const { user, workspace, role } = await requireWorkspace();
   const sp = await searchParams;
   const db = getDb();
@@ -52,7 +52,11 @@ export default async function NewPost({ searchParams }: { searchParams: Promise<
           // Opened from an account's page: that account starts ticked.
           : idea ? { accountIds: [], main: [idea.title, idea.body].filter(Boolean).join('\n\n') }
           : template ? { accountIds: [], main: template.starter }
-          : accounts.some((a) => a.id === sp.account) ? { accountIds: [sp.account!], main: '' } : undefined}
+          : accounts.some((a) => a.id === sp.account) ? {
+            accountIds: [sp.account!], main: '',
+            // A slot from the account's queue also brings its date and time.
+            ...(sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) && sp.time && /^\d{2}:\d{2}$/.test(sp.time) ? { date: sp.date, time: sp.time } : {}),
+          } : undefined}
       />
     </>
   );
