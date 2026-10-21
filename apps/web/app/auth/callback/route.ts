@@ -2,27 +2,26 @@ import { NextResponse } from 'next/server';
 import { appUrl } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
+// Only these may follow a sign-in code, so the link cannot send anyone off-site.
+const safeNext = (next: string | null) => (next === '/reset-password' || next?.startsWith('/app') ? next : '/app');
+
 /**
- * Finish the Facebook sign-in: trade the one-time code for a session cookie.
- *
- * Supabase sends errors back here as query parameters instead of a code: the person
- * cancelled, or Facebook returned no email (accounts registered with a phone number).
+ * Finish a password-reset link: trade its one-time code for a session cookie, then go on
+ * to `next`. The code only works in the browser that asked for the email.
  */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const base = appUrl(req);
   const code = params.get('code');
   if (!code) {
-    const why = `${params.get('error') ?? ''} ${params.get('error_description') ?? ''}`.trim();
-    console.error(`Facebook sign-in returned an error: ${why || 'no code'}`);
-    const kind = /email/i.test(why) ? 'no_email' : /access_denied/i.test(why) ? 'cancelled' : 'failed';
-    return NextResponse.redirect(`${base}/login?error=${kind}`);
+    console.error(`Auth callback without a code: ${params.get('error_description') ?? params.get('error') ?? 'none'}`);
+    return NextResponse.redirect(`${base}/login?error=link`);
   }
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    console.error(`Sign-in code exchange failed: ${error.message}`);
-    return NextResponse.redirect(`${base}/login?error=failed`);
+    console.error(`Auth code exchange failed: ${error.message}`);
+    return NextResponse.redirect(`${base}/login?error=link`);
   }
-  return NextResponse.redirect(`${base}/app`);
+  return NextResponse.redirect(`${base}${safeNext(params.get('next'))}`);
 }

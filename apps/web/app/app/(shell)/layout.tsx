@@ -6,6 +6,14 @@ import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { signOut, switchWorkspaceAction } from '@/app/app/actions';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
+import { PlatformMark } from '@/components/brand-icons';
+import { ConnectProgress } from '@/components/connect-progress';
+
+const PLATFORMS = [
+  { pf: 'facebook', label: 'Facebook 粉專', href: '/app/connect/facebook' },
+  { pf: 'instagram', label: 'Instagram', href: '/app/connect/facebook' },
+  { pf: 'line', label: 'LINE 官方帳號', href: '/app/connect/line' },
+] as const;
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user, membership } = await currentMember();
@@ -15,6 +23,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const ws = membership.workspace;
   const [groups, accounts, counts, unread, workspaces] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id }), listMemberships(db, user.id)]);
   const expired = accounts.filter((a) => a.status !== 'active');
+  // Instagram connects through the Facebook login for now, so both lead there.
+  const missing = PLATFORMS.filter((p) => !accounts.some((a) => a.platform === p.pf));
   const nav: NavItem[] = [
     { href: '/app', label: '總覽', icon: 'home' },
     { href: '/app/notifications', label: '通知', icon: 'bell', badge: { n: unread, bg: 'var(--accent-soft)', fg: 'var(--accent)' } },
@@ -41,6 +51,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <Icon name="plus" stroke={2} />新增貼文
       </a>
       <NavLinks items={nav} />
+      {missing.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div className="side-section-title">連結帳號</div>
+          {missing.map((p) => (
+            <a key={p.pf} href={p.href} className="market-link">
+              <PlatformMark pf={p.pf} size={18} />
+              <span style={{ flex: 1 }}>{p.label}</span>
+              <Icon name="plus" size={14} />
+            </a>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div className="side-section-title">群組</div>
         {groups.map((g) => {
@@ -58,6 +80,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <Icon name="plus" size={14} /><span className="small">新增群組</span>
         </a>
       </div>
+      <ConnectProgress done={PLATFORMS.length - missing.length} total={PLATFORMS.length} />
       <div className="side-foot">
         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
         <form action={signOut}>

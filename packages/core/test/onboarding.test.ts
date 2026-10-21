@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { accountContext, encrypt } from '../src/crypto';
 import { auditLog, brandVoices, connectedAccounts, publishTasks, workspaces } from '../src/db/index';
 import { createClients } from '../src/index';
-import { aiUsage, createWorkspaceForUser, dismissOnboarding, setupProgress, updateWorkspaceSettings, WorkspaceError } from '../src/onboarding';
+import { aiUsage, getProfile, saveProfile, createWorkspaceForUser, dismissOnboarding, setupProgress, updateWorkspaceSettings, WorkspaceError } from '../src/onboarding';
 import { cancelPost, createPost } from '../src/posts';
 import { dispatchDue } from '../src/publish/dispatch';
 import { bootstrapWorkspace, listMemberships, membershipFor } from '../src/workspace';
@@ -96,5 +96,18 @@ describe('cancelPost', () => {
     const s = await dispatchDue({ db, clients: createClients(fakeFetch().fn), key: KEY, globalEnabled: false, now: new Date('2026-10-25T00:00:00Z') });
     expect(Object.values(s).reduce((n, v) => n + (typeof v === 'number' ? v : 0), 0)).toBe(0);
     await expect(cancelPost(db, { workspaceId: ws.id, postId, actor: amy.email, role: 'owner' })).rejects.toThrow(/沒有還在排程中/);
+  });
+});
+
+describe('profile', () => {
+  it('keeps known answers, drops the rest, and records when onboarding is done', async () => {
+    const db = await testDb();
+    expect(await getProfile(db, amy.userId)).toBeNull();
+    await saveProfile(db, { userId: amy.userId, displayName: ' amy ', answers: { describes: 'agency', accounts: '99', platforms: ['facebook', 'line', 'tiktok', 'line'], goals: [] } });
+    expect(await getProfile(db, amy.userId)).toMatchObject({ displayName: 'amy', describes: 'agency', accounts: null, platforms: ['facebook', 'line'], goals: [], onboardedAt: null });
+    await saveProfile(db, { userId: amy.userId, answers: { describes: 'agency', goals: ['ai'] }, done: true });
+    const p = await getProfile(db, amy.userId);
+    expect(p).toMatchObject({ displayName: 'amy', goals: ['ai'] });
+    expect(p!.onboardedAt).toBeInstanceOf(Date);
   });
 });

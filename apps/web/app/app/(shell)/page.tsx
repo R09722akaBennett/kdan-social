@@ -1,4 +1,5 @@
 import {
+  getProfile,
   clockInZone,
   dayInZone,
   followerStats,
@@ -11,6 +12,7 @@ import {
   upcomingTasks,
   type ScheduledTask,
 } from '@kdan-social/core';
+import { redirect } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { FilterMenu } from '@/components/groups';
 import { Chip, Icon, localTime, Pf, PLATFORM, fmtN, zoneName, zoneOptions } from '@/components/ui';
@@ -56,6 +58,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const filter = [sp.group ?? []].flat();
 
   if (!membership) {
+    // Someone who signed up but has not been through the questions starts there.
+    const profile = await getProfile(getDb(), user.id);
+    if (!profile?.onboardedAt) redirect('/welcome');
     const canCreate = signupCodes().length > 0;
     // After Base44's "Create a Workspace": one card, then what happens next.
     return (

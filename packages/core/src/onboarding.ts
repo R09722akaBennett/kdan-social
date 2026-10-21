@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
-import { accountGroups, auditLog, brandVoices, connectedAccounts, postVariants, posts, publishTasks, workspaceInvites, workspaceMembers, workspaces, type Db } from './db/index';
+import { accountGroups, auditLog, brandVoices, connectedAccounts, postVariants, posts, publishTasks, userProfiles, workspaceInvites, workspaceMembers, workspaces, type Db } from './db/index';
 import { assertTimeZone } from './time';
 import { bootstrapWorkspace } from './workspace';
 
@@ -111,4 +111,37 @@ export async function aiUsage(db: Db, a: { workspaceId: string; days: number; no
     byModel.set(key, m);
   }
   return [...byModel].map(([model, m]) => ({ model, ...m })).sort((x, y) => y.requests - x.requests);
+}
+
+// The onboarding questions' answers, as stable keys; the page holds their wording.
+export const DESCRIBES = ['brand', 'agency', 'shop', 'creator', 'other'] as const;
+export const ACCOUNT_RANGES = ['1-3', '4-10', '11-30', '30+'] as const;
+export const PLATFORMS = ['facebook', 'instagram', 'line', 'other'] as const;
+export const GOALS = ['schedule', 'review', 'ai', 'analytics'] as const;
+
+export type ProfileAnswers = { describes?: string | null; accounts?: string | null; platforms?: string[]; goals?: string[] };
+
+/** A person's profile, or null before they have one. */
+export async function getProfile(db: Db, userId: string) {
+  const [row] = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId));
+  return row ?? null;
+}
+
+/**
+ * Save the onboarding answers given so far; unknown values are dropped rather than
+ * refused, since every question can be skipped. `done` marks onboarding finished.
+ */
+export async function saveProfile(db: Db, a: { userId: string; displayName?: string; answers: ProfileAnswers; done?: boolean }) {
+  const pick = <T extends readonly string[]>(list: T, v?: string | null) => (v && (list as readonly string[]).includes(v) ? v : null);
+  const many = <T extends readonly string[]>(list: T, v?: string[]) => [...new Set((v ?? []).filter((x) => (list as readonly string[]).includes(x)))];
+  const values = {
+    describes: pick(DESCRIBES, a.answers.describes),
+    accounts: pick(ACCOUNT_RANGES, a.answers.accounts),
+    platforms: many(PLATFORMS, a.answers.platforms),
+    goals: many(GOALS, a.answers.goals),
+    ...(a.displayName !== undefined ? { displayName: a.displayName.trim().slice(0, 60) || null } : {}),
+    ...(a.done ? { onboardedAt: new Date() } : {}),
+  };
+  await db.insert(userProfiles).values({ userId: a.userId, ...values })
+    .onConflictDoUpdate({ target: userProfiles.userId, set: values });
 }
