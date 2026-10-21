@@ -15,7 +15,8 @@ import type { CSSProperties } from 'react';
 import { FilterMenu } from '@/components/groups';
 import { Chip, Icon, localTime, Pf, PLATFORM, fmtN, zoneName, zoneOptions } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
-import { createWorkspaceAction, dismissOnboardingAction, signOut } from '@/app/app/actions';
+import { dismissOnboardingAction, signOut } from '@/app/app/actions';
+import { CreateWorkspaceForm } from '@/components/create-workspace';
 import { getDb, signupCodes } from '@/lib/server';
 
 const NOTICE: Record<string, [string, string]> = {
@@ -64,26 +65,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         </header>
         {sp.error && <div className="alert" role="alert"><div className="body">{sp.error}</div></div>}
         {canCreate ? (
-          <form action={createWorkspaceAction} className="card card-pad stack" style={{ gap: 14 }}>
-            <div className="field">
-              <label htmlFor="ws-name">工作區名稱</label>
-              <input id="ws-name" name="name" className="input" required maxLength={60} placeholder="例如：品牌或公司名稱" autoFocus />
-            </div>
-            <div className="field">
-              <label htmlFor="ws-tz">時區</label>
-              <select id="ws-tz" name="timeZone" className="select" defaultValue="Asia/Taipei">
-                {zoneOptions().map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
-              </select>
-              <span className="tiny muted">頁面上的時間以這個時區顯示，新連結的帳號也先用它；之後每個帳號可以各自調整。</span>
-            </div>
-            <div className="field">
-              <label htmlFor="ws-code">邀請碼</label>
-              <input id="ws-code" name="code" className="input" required autoComplete="off" />
-            </div>
-            <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button type="submit" className="btn btn-primary">建立工作區</button>
-            </div>
-          </form>
+          <CreateWorkspaceForm from="/app" />
         ) : (
           <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁邀請 {user.email}，再重新登入。</div>
         )}

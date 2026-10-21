@@ -105,22 +105,25 @@ export async function removeMember(db: Db, a: { workspaceId: string; userId: str
 }
 
 /**
- * Turn the pending invite for a signed-in user's email into a membership.
+ * Turn every pending invite for a signed-in user's email into a membership.
  *
  * Call it only with an email the auth provider has verified; the invite trusts it.
  *
  * Returns:
- *   The joined workspace and role, or null when no invite waits for this email.
+ *   The oldest invite's workspace and role, or null when no invite waits for this email.
  */
 export async function acceptInvite(db: Db, a: { userId: string; email: string }) {
   const email = a.email.trim().toLowerCase();
   return db.transaction(async (tx) => {
-    const [inv] = await tx.select().from(workspaceInvites).where(eq(workspaceInvites.email, email)).orderBy(asc(workspaceInvites.createdAt)).limit(1);
-    if (!inv) return null;
-    await tx.insert(workspaceMembers).values({ workspaceId: inv.workspaceId, userId: a.userId, email, role: inv.role }).onConflictDoNothing();
-    await tx.delete(workspaceInvites).where(eq(workspaceInvites.id, inv.id));
-    await tx.insert(auditLog).values({ workspaceId: inv.workspaceId, actor: email, action: 'member.joined', target: email, detail: { role: inv.role, invitedBy: inv.invitedBy } });
-    const [ws] = await tx.select().from(workspaces).where(eq(workspaces.id, inv.workspaceId));
-    return { workspace: ws!, role: inv.role };
+    // Several workspaces may have invited the same person; they join all of them.
+    const invites = await tx.select().from(workspaceInvites).where(eq(workspaceInvites.email, email)).orderBy(asc(workspaceInvites.createdAt));
+    if (!invites.length) return null;
+    for (const inv of invites) {
+      await tx.insert(workspaceMembers).values({ workspaceId: inv.workspaceId, userId: a.userId, email, role: inv.role }).onConflictDoNothing();
+      await tx.delete(workspaceInvites).where(eq(workspaceInvites.id, inv.id));
+      await tx.insert(auditLog).values({ workspaceId: inv.workspaceId, actor: email, action: 'member.joined', target: email, detail: { role: inv.role, invitedBy: inv.invitedBy } });
+    }
+    const [ws] = await tx.select().from(workspaces).where(eq(workspaces.id, invites[0]!.workspaceId));
+    return { workspace: ws!, role: invites[0]!.role };
   });
 }

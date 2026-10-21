@@ -25,16 +25,31 @@ export class ConnectError extends Error {}
 
 const CONNECT_TTL_MS = 15 * 60_000;
 
-/** The workspace a user belongs to, or null when they have not been added to any. */
-export async function membershipFor(db: Db, userId: string) {
-  const [row] = await db
+/**
+ * The workspace a user is working in, or null when they have not been added to any.
+ *
+ * Args:
+ *   preferred: the workspace they last switched to; ignored unless they are still a
+ *     member, in which case the one they joined first is used.
+ */
+export async function membershipFor(db: Db, userId: string, preferred?: string | null) {
+  const rows = await db
     .select({ workspace: workspaces, role: workspaceMembers.role })
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
     .where(eq(workspaceMembers.userId, userId))
-    .orderBy(workspaceMembers.createdAt)
-    .limit(1);
-  return row ?? null;
+    .orderBy(workspaceMembers.createdAt);
+  return rows.find((r) => r.workspace.id === preferred) ?? rows[0] ?? null;
+}
+
+/** Every workspace a user belongs to, in the order they joined, for the switcher. */
+export function listMemberships(db: Db, userId: string) {
+  return db
+    .select({ id: workspaces.id, name: workspaces.name, role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(eq(workspaceMembers.userId, userId))
+    .orderBy(workspaceMembers.createdAt);
 }
 
 /** Connected accounts without their credentials, which never leave the server. */

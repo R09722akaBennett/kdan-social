@@ -5,7 +5,7 @@ import { createClients } from '../src/index';
 import { aiUsage, createWorkspaceForUser, dismissOnboarding, setupProgress, updateWorkspaceSettings, WorkspaceError } from '../src/onboarding';
 import { cancelPost, createPost } from '../src/posts';
 import { dispatchDue } from '../src/publish/dispatch';
-import { bootstrapWorkspace, membershipFor } from '../src/workspace';
+import { bootstrapWorkspace, listMemberships, membershipFor } from '../src/workspace';
 import { fakeFetch, KEY, testDb } from './helpers';
 
 const amy = { userId: '00000000-0000-4000-8000-0000000000a1', email: 'amy@example.com' };
@@ -19,14 +19,22 @@ describe('createWorkspaceForUser', () => {
     expect((await membershipFor(db, amy.userId))?.role).toBe('owner');
   });
 
-  it('refuses when signup is off, the code is wrong, the person has one, or input is bad', async () => {
+  it('refuses when signup is off, the code is wrong, or input is bad', async () => {
     const db = await testDb();
     await expect(createWorkspaceForUser(db, { ...base, codes: [] })).rejects.toThrow(/不開放/);
     await expect(createWorkspaceForUser(db, { ...base, code: 'nope' })).rejects.toThrow(/邀請碼不正確/);
     await expect(createWorkspaceForUser(db, { ...base, name: ' ' })).rejects.toThrow(/取個名字/);
     await expect(createWorkspaceForUser(db, { ...base, timeZone: 'Mars/Base' })).rejects.toThrow(/時區/);
-    await createWorkspaceForUser(db, base);
-    await expect(createWorkspaceForUser(db, base)).rejects.toThrow(/已經有工作區/);
+  });
+
+  it('lets someone who already has a workspace create another', async () => {
+    const db = await testDb();
+    const first = await createWorkspaceForUser(db, base);
+    const second = await createWorkspaceForUser(db, { ...base, name: '客戶 B' });
+    expect((await listMemberships(db, amy.userId)).map((m) => [m.name, m.role])).toEqual([['Bandai 台灣', 'owner'], ['客戶 B', 'owner']]);
+    expect((await membershipFor(db, amy.userId))?.workspace.id).toBe(first.id);
+    expect((await membershipFor(db, amy.userId, second.id))?.workspace.id).toBe(second.id);
+    expect((await membershipFor(db, amy.userId, '00000000-0000-4000-8000-00000000ffff'))?.workspace.id).toBe(first.id);
   });
 });
 

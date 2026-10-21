@@ -1,10 +1,10 @@
 'use server';
 
-import { markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
-import { requireUser, requireWorkspace } from '@/lib/auth';
+import { rememberWorkspace, requireUser, requireWorkspace } from '@/lib/auth';
 import { deps, getDb, signupCodes } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
@@ -246,17 +246,29 @@ export async function insightsAction(input: { days: number; groups: string[] }):
 
 export async function createWorkspaceAction(formData: FormData) {
   const user = await requireUser();
+  const from = formData.get('from') === '/app/workspaces/new' ? '/app/workspaces/new' : '/app';
+  let id: string;
   try {
-    await createWorkspaceForUser(getDb(), {
+    ({ id } = await createWorkspaceForUser(getDb(), {
       userId: user.id, email: user.email, codes: signupCodes(),
       name: String(formData.get('name') ?? ''), timeZone: String(formData.get('timeZone') ?? ''), code: String(formData.get('code') ?? ''),
-    });
+    }));
   } catch (e) {
-    if (e instanceof WorkspaceError) redirect(`/app?error=${encodeURIComponent(e.message)}`);
+    if (e instanceof WorkspaceError) redirect(`${from}?error=${encodeURIComponent(e.message)}`);
     throw e;
   }
+  await rememberWorkspace(id);
   revalidatePath('/app', 'layout');
   redirect('/app?notice=workspace_created');
+}
+
+export async function switchWorkspaceAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('workspaceId') ?? '');
+  // Only a workspace the person belongs to is remembered; anything else keeps the current one.
+  if ((await listMemberships(getDb(), user.id)).some((m) => m.id === id)) await rememberWorkspace(id);
+  revalidatePath('/app', 'layout');
+  redirect('/app');
 }
 
 export async function updateSettingsAction(formData: FormData) {
@@ -309,3 +321,4 @@ export async function markAllReadAction() {
   revalidatePath('/app', 'layout');
   redirect('/app/notifications');
 }
+

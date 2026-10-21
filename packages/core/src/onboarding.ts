@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { accountGroups, auditLog, brandVoices, connectedAccounts, postVariants, posts, publishTasks, workspaceInvites, workspaceMembers, workspaces, type Db } from './db/index';
 import { assertTimeZone } from './time';
-import { bootstrapWorkspace, membershipFor } from './workspace';
+import { bootstrapWorkspace } from './workspace';
 
 /** A workspace change refused; the message is shown to the user as is. */
 export class WorkspaceError extends Error {}
@@ -25,19 +25,18 @@ function checkZone(tz: string) {
 }
 
 /**
- * Let a signed-in person without a workspace create one and become its owner.
+ * Let a signed-in person create a workspace and become its owner. They may already
+ * belong to others; an agency typically runs one per client.
  *
  * Args:
  *   codes: the signup codes this deployment accepts; empty means self-serve signup is off.
  *
  * Raises:
- *   WorkspaceError: signup is off, the code is wrong, the person already has a
- *     workspace, or the name or time zone is invalid.
+ *   WorkspaceError: signup is off, the code is wrong, or the name or time zone is invalid.
  */
 export async function createWorkspaceForUser(db: Db, a: { userId: string; email: string; name: string; timeZone: string; code: string; codes: string[] }) {
   if (a.codes.length === 0) throw new WorkspaceError('目前不開放自行建立工作區，請聯絡我們取得邀請。');
   if (!a.codes.includes(a.code.trim())) throw new WorkspaceError('邀請碼不正確。');
-  if (await membershipFor(db, a.userId)) throw new WorkspaceError('你已經有工作區了。');
   const name = checkName(a.name);
   checkZone(a.timeZone);
   return bootstrapWorkspace(db, { name, owner: { userId: a.userId, email: a.email }, timeZone: a.timeZone });

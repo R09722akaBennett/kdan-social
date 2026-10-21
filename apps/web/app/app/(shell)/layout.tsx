@@ -1,10 +1,11 @@
-import { listAccounts, listGroups, overviewCounts, unreadCount } from '@kdan-social/core';
+import { listAccounts, listGroups, listMemberships, overviewCounts, unreadCount } from '@kdan-social/core';
 import type { ReactNode } from 'react';
 import { AppShell, NavLinks, type NavItem } from '@/components/AppShell';
 import { Icon } from '@/components/ui';
 import { currentMember } from '@/lib/auth';
 import { getDb } from '@/lib/server';
-import { signOut } from '@/app/app/actions';
+import { signOut, switchWorkspaceAction } from '@/app/app/actions';
+import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user, membership } = await currentMember();
@@ -12,7 +13,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const db = getDb();
   const ws = membership.workspace;
-  const [groups, accounts, counts, unread] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id })]);
+  const [groups, accounts, counts, unread, workspaces] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id }), listMemberships(db, user.id)]);
   const expired = accounts.filter((a) => a.status !== 'active');
   const nav: NavItem[] = [
     { href: '/app', label: '總覽', icon: 'home' },
@@ -30,14 +31,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const sidebar = (
     <aside className="sidebar" aria-label="側欄">
       <div className="brand"><span className="brand-mark">K</span>kdan-social</div>
-      <a href="/app/channels" className="workspace" style={{ color: 'inherit' }}>
-        <span className="ws-mark">{ws.name.slice(0, 2).toUpperCase()}</span>
-        <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: 600 }}>{ws.name}</span>
-          <span className="tiny muted">{accounts.length} 個帳號 · {groups.length} 個群組</span>
-        </span>
-        <Icon name="chevronDown" size={16} />
-      </a>
+      <WorkspaceSwitcher
+        current={{ id: ws.id, name: ws.name, role: membership.role }}
+        detail={`${accounts.length} 個帳號 · ${groups.length} 個群組`}
+        list={workspaces}
+        action={switchWorkspaceAction}
+      />
       <a href="/app/posts/new" className="btn btn-primary" style={{ minHeight: 44 }}>
         <Icon name="plus" stroke={2} />新增貼文
       </a>

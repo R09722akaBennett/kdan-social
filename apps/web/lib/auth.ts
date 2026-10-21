@@ -1,5 +1,6 @@
 import 'server-only';
 import { acceptInvite, membershipFor } from '@kdan-social/core';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb } from './server';
 import { supabaseServer } from './supabase';
@@ -12,17 +13,27 @@ export async function requireUser() {
   return { id: data.user.id, email: data.user.email ?? '', emailConfirmed: !!data.user.email_confirmed_at };
 }
 
+// Which workspace a person last switched to. Only a hint: membershipFor ignores it
+// unless they still belong there.
+const WORKSPACE_COOKIE = 'kdan_ws';
+
+export async function rememberWorkspace(workspaceId: string) {
+  (await cookies()).set(WORKSPACE_COOKIE, workspaceId, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 365 * 86_400 });
+}
+
 /**
- * The signed-in user and their workspace; null workspace when they have not been added to one.
+ * The signed-in user and the workspace they are working in; null workspace when they
+ * have not been added to one.
  *
- * Someone without a workspace joins the one that invited their email, if any. Only a
- * confirmed email counts, since the invite trusts the address to be theirs.
+ * Pending invites for their email are accepted first, so being invited to a second
+ * workspace adds it to the switcher on the next page load. Only a confirmed email
+ * counts, since the invite trusts the address to be theirs.
  */
 export async function currentMember() {
   const user = await requireUser();
   const db = getDb();
-  let membership = await membershipFor(db, user.id);
-  if (!membership && user.emailConfirmed && user.email) membership = await acceptInvite(db, { userId: user.id, email: user.email });
+  if (user.emailConfirmed && user.email) await acceptInvite(db, { userId: user.id, email: user.email });
+  const membership = await membershipFor(db, user.id, (await cookies()).get(WORKSPACE_COOKIE)?.value);
   return { user, membership };
 }
 
