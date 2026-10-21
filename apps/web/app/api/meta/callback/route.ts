@@ -20,6 +20,8 @@ export async function GET(req: Request) {
 
   try {
     const { pages, missing } = await exchangeCodeForPages(fetch, metaApp(req), code);
+    // Which scopes came back is otherwise unknowable afterwards: tokens are stored encrypted.
+    console.log(`Meta authorization for workspace ${workspace.id}: ${pages.length} page(s), ${missing.length ? `missing ${missing.join(', ')}` : 'all scopes granted'}`);
     if (pages.length === 0) return NextResponse.redirect(`${base}/app?notice=meta_no_pages`);
     const sessionId = await startMetaConnect(getDb(), loadKey(), { workspaceId: workspace.id, userId: user.id, pages });
     const q = new URLSearchParams({ session: sessionId, ...(missing.length ? { missing: missing.join(',') } : {}) });
