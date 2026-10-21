@@ -18,6 +18,7 @@ export function createClients(fetchFn: typeof fetch = fetch): Clients {
 export { META_SCOPES, OPTIONAL_META_SCOPES, metaLoginUrl, exchangeCodeForPages, type MetaApp, type MetaGrant, type MetaPage } from './platforms/meta-oauth';
 export * from './workspace';
 export * from './posts';
+export * from './channel';
 export * from './time';
 export * from './overview';
 export * from './groups';

@@ -32,6 +32,8 @@ export type ComposeInput = {
   schedule: Schedule;
   /** The zone a `same` schedule is read in; the person scheduling's own clock. */
   viewerTimeZone?: string;
+  /** A draft being scheduled; it becomes this post instead of a new one. */
+  draftId?: string;
   now?: Date;
 };
 
@@ -121,7 +123,10 @@ export async function createPost(db: Db, input: ComposeInput) {
   const approved = input.role === 'owner' || input.role === 'admin' || !rows[0]!.workspace.requiresReview;
 
   return db.transaction(async (tx) => {
-    const [post] = await tx.insert(posts).values({ workspaceId: input.workspaceId, title: titleOf(input), body: input.body.trim(), createdBy: input.actor }).returning();
+    const fields = { title: titleOf(input), body: input.body.trim() };
+    const post = input.draftId
+      ? await reopenDraft(tx, { ...input, postId: input.draftId }, fields)
+      : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0];
     for (const account of accounts) {
       const [v] = await tx.insert(postVariants).values({
         postId: post!.id,
@@ -138,11 +143,87 @@ export async function createPost(db: Db, input: ComposeInput) {
       actor: input.actor,
       action: 'post.created',
       target: post!.id,
-      detail: { title: post!.title, accounts: rows.length, customised: accounts.filter((a) => input.perAccount?.[a.id] !== undefined).length, schedule: input.schedule.mode },
+      detail: { title: post!.title, accounts: rows.length, customised: accounts.filter((a) => input.perAccount?.[a.id] !== undefined).length, schedule: input.schedule.mode, fromDraft: !!input.draftId },
     });
     if (!approved) await notifyReviewers(tx, input.workspaceId, post!.id, post!.title, input.actor);
     return { postId: post!.id, tasks: rows.length };
   });
+}
+
+export type DraftInput = Omit<ComposeInput, 'schedule' | 'viewerTimeZone' | 'draftId' | 'now'> & {
+  /** The draft being saved again; omitted for a new one. */
+  postId?: string;
+};
+
+const isManager = (role: Role) => role === 'owner' || role === 'admin';
+
+/**
+ * Open a draft for change: its accounts' versions are dropped so the caller writes them
+ * again, and its title and main text take `fields`.
+ *
+ * Raises:
+ *   ComposeError: the post is not in the workspace, the caller is neither its author nor
+ *     an owner or admin, or it already has publish tasks and so is no longer a draft.
+ */
+async function reopenDraft(tx: Db, a: { workspaceId: string; postId: string; actor: string; role: Role }, fields: { title: string; body: string }) {
+  const [post] = await tx.select().from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
+  if (!post) throw new ComposeError('找不到這篇草稿，請重新整理後再試。');
+  if (!isManager(a.role) && post.createdBy !== a.actor) throw new ComposeError('只有作者、擁有者或管理員可以修改這篇草稿。');
+  const [task] = await tx.select({ id: publishTasks.id }).from(publishTasks).innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))
+    .where(eq(postVariants.postId, post.id)).limit(1);
+  if (task) throw new ComposeError('這篇貼文已經排程，請從貼文頁修改。');
+  await tx.delete(postVariants).where(eq(postVariants.postId, post.id));
+  const [updated] = await tx.update(posts).set(fields).where(eq(posts.id, post.id)).returning();
+  return updated!;
+}
+
+/**
+ * Save a post without a time: one version per account and no publish task, so nothing
+ * goes out and nobody is asked to review it. Saving an existing draft replaces its
+ * accounts and text.
+ *
+ * Platform rules wait until it is scheduled, since a draft may still lack its image;
+ * only the accounts and the media's addresses are checked now.
+ *
+ * Raises:
+ *   ComposeError: no account is chosen, an account is outside the workspace, the media
+ *     is invalid, or `postId` is not a draft the caller may change.
+ */
+export async function saveDraft(db: Db, input: DraftInput) {
+  if (input.accountIds.length === 0) throw new ComposeError('請至少選一個要發的帳號。');
+  checkMedia(input.media);
+  const accounts = await db.select().from(connectedAccounts)
+    .where(and(eq(connectedAccounts.workspaceId, input.workspaceId), inArray(connectedAccounts.id, input.accountIds)));
+  if (accounts.length !== new Set(input.accountIds).size) throw new ComposeError('有帳號不屬於這個工作區，請重新整理後再試。');
+  return db.transaction(async (tx) => {
+    const fields = { title: titleOf(input), body: input.body.trim() };
+    const post = input.postId
+      ? await reopenDraft(tx, { ...input, postId: input.postId }, fields)
+      : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0]!;
+    await tx.insert(postVariants).values(accounts.map((account) => ({
+      postId: post.id, accountId: account.id, platform: account.platform, body: textFor(input, account.id), media: input.media, reviewStatus: 'draft' as const,
+    })));
+    await tx.insert(auditLog).values({ workspaceId: input.workspaceId, actor: input.actor, action: 'post.drafted', target: post.id, detail: { title: post.title, accounts: accounts.length } });
+    return { postId: post.id };
+  });
+}
+
+/** Drafts, newest first, each with its accounts; only those for `accountId` when given. */
+export async function listDrafts(db: Db, a: { workspaceId: string; accountId?: string }) {
+  const rows = await db
+    .select({ post: posts, accountId: postVariants.accountId, platform: postVariants.platform, account: connectedAccounts.name, body: postVariants.body, media: postVariants.media })
+    .from(postVariants)
+    .innerJoin(posts, eq(posts.id, postVariants.postId))
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, postVariants.accountId))
+    .where(and(eq(posts.workspaceId, a.workspaceId), eq(postVariants.reviewStatus, 'draft')))
+    .orderBy(desc(posts.createdAt));
+  const byPost = new Map<string, { post: typeof posts.$inferSelect; versions: Array<Omit<(typeof rows)[number], 'post'>> }>();
+  for (const { post, ...v } of rows) {
+    const entry = byPost.get(post.id) ?? { post, versions: [] };
+    entry.versions.push(v);
+    byPost.set(post.id, entry);
+  }
+  return [...byPost.values()].filter((d) => !a.accountId || d.versions.some((v) => v.accountId === a.accountId));
 }
 
 export type UpdateInput = Omit<ComposeInput, 'accountIds' | 'schedule'> & {
@@ -178,6 +259,8 @@ export async function updatePost(db: Db, input: UpdateInput) {
       .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
       .where(eq(postVariants.postId, row.post.id))
       .for('update', { of: publishTasks });
+    // A draft has no tasks; it is saved with `saveDraft` or scheduled with `createPost`.
+    if (tasks.length === 0) throw new ComposeError('這篇是草稿，請從草稿開啟後再儲存或排程。');
     if (tasks.some((t) => t.task.status !== 'scheduled')) throw new ComposeError('這篇貼文已經有帳號發出或正在發送，不能再修改。');
     const accounts = tasks.map((t) => t.account);
     checkContent(accounts, input);
