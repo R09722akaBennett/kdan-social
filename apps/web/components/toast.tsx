@@ -15,6 +15,8 @@ type Tone = 'ok' | 'warn' | 'err' | 'plan';
 export function NoticeToast({ text, tone = 'ok' }: { text: string; tone?: Tone }) {
   const [open, setOpen] = useState(true);
   useEffect(() => {
+    // A server action redirecting back to the same page reuses this component with new text.
+    setOpen(true);
     const url = new URL(window.location.href);
     url.searchParams.delete('notice');
     url.searchParams.delete('n');

@@ -8,6 +8,7 @@ import { signOut, switchWorkspaceAction } from '@/app/app/actions';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import { PlatformMark } from '@/components/brand-icons';
 import { ConnectProgress } from '@/components/connect-progress';
+import Link from 'next/link';
 
 const PLATFORMS = [
   { pf: 'facebook', label: 'Facebook 粉專', href: '/app/connect/facebook' },
@@ -47,9 +48,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         list={workspaces}
         action={switchWorkspaceAction}
       />
-      <a href="/app/posts/new" className="btn btn-primary" style={{ minHeight: 44 }}>
+      <Link href="/app/posts/new" className="btn btn-primary" style={{ minHeight: 44 }}>
         <Icon name="plus" stroke={2} />新增貼文
-      </a>
+      </Link>
       <NavLinks items={nav} />
       {missing.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -69,16 +70,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           const list = accounts.filter((a) => a.groupId === g.id);
           const bad = list.some((a) => a.status !== 'active');
           return (
-            <a key={g.id} href="/app/channels" className="market-link">
+            <Link key={g.id} href="/app/channels" className="market-link">
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
               <span className="tiny muted num">{list.length}</span>
               <span className="dot" role="img" aria-label={bad ? '有帳號需重新連結' : '正常'} style={{ background: bad ? 'var(--err)' : 'var(--ok)' }} />
-            </a>
+            </Link>
           );
         })}
-        <a href="/app/channels#groups" className="market-link" style={{ color: 'var(--ink-3)' }}>
+        <Link href="/app/channels#groups" className="market-link" style={{ color: 'var(--ink-3)' }}>
           <Icon name="plus" size={14} /><span className="small">新增群組</span>
-        </a>
+        </Link>
       </div>
       <ConnectProgress done={PLATFORMS.length - missing.length} total={PLATFORMS.length} />
       <div className="side-foot">

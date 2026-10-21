@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from './ui';
@@ -32,11 +33,11 @@ export function NavLinks({ items }: { items: NavItem[] }) {
   return (
     <nav className="nav" aria-label="主選單">
       {items.map((n) => (
-        <a key={n.href} href={n.href} aria-current={current(n.href) ? 'page' : undefined}>
+        <Link key={n.href} href={n.href} aria-current={current(n.href) ? 'page' : undefined}>
           <Icon name={n.icon} />
           <span className="label">{n.label}</span>
           {n.badge && n.badge.n > 0 && <span className="count" style={{ background: n.badge.bg, color: n.badge.fg }}>{n.badge.n}</span>}
-        </a>
+        </Link>
       ))}
     </nav>
   );
