@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
 import { rememberWorkspace, requireUser, requireWorkspace } from '@/lib/auth';
-import { deps, getDb, signupCodes } from '@/lib/server';
+import { appUrl, deps, getDb, signupCodes } from '@/lib/server';
 import { supabaseServer } from '@/lib/supabase';
 
 // Server actions are public endpoints: every one re-checks the session and workspace
@@ -343,4 +343,19 @@ export async function deleteConversationAction(formData: FormData) {
   const { user, workspace } = await requireWorkspace();
   await deleteConversation(getDb(), { workspaceId: workspace.id, userId: user.id, id: String(formData.get('id')) });
   redirect('/app/assistant');
+}
+
+/**
+ * Attach a Facebook login to the signed-in person, so the same account (and its
+ * workspaces) opens with either. Only `email` is asked for; Page access is separate.
+ */
+export async function linkFacebookAction() {
+  await requireUser();
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.auth.linkIdentity({ provider: 'facebook', options: { redirectTo: `${appUrl()}/auth/callback?next=/app/settings`, scopes: 'email' } });
+  if (error || !data.url) {
+    console.error(`Linking Facebook could not start: ${error?.message ?? 'no URL returned'}`);
+    redirect(`/app/settings?error=${encodeURIComponent('目前無法連到 Facebook，請稍後再試。')}#login`);
+  }
+  redirect(data.url);
 }
