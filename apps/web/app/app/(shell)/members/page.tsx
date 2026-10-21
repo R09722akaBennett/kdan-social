@@ -12,7 +12,7 @@ export default async function Members({ searchParams }: { searchParams: Promise<
   const db = getDb();
   const [members, invites] = await Promise.all([listMembers(db, workspace.id), listInvites(db, workspace.id)]);
   const manager = canManageMembers(role);
-  const loginUrl = `${appUrl()}/login`;
+  const base = appUrl();
   const tz = workspace.timeZone;
 
   return (
@@ -58,7 +58,7 @@ export default async function Members({ searchParams }: { searchParams: Promise<
         <div className="card-head">
           <div>
             <h2 id="h-invites">待接受的邀請 <span className="small muted">{invites.length}</span></h2>
-            <div className="small muted">對方用 Email 是受邀地址的 Facebook 帳號登入，就會自動加入。</div>
+            <div className="small muted">每個邀請都有自己的連結，複製後傳給對方；對方打開連結建立帳號或登入就會加入，連結用過一次就失效。</div>
           </div>
         </div>
         {invites.length === 0 && <div className="list-row small muted">沒有待接受的邀請。</div>}
@@ -68,7 +68,7 @@ export default async function Members({ searchParams }: { searchParams: Promise<
               <div style={{ fontWeight: 600 }}>{i.email}</div>
               <div className="small muted">{ROLE_TEXT[i.role]!.name} · {i.invitedBy} 於 {formatInZone(i.createdAt, tz)} 邀請</div>
             </div>
-            <CopyLinkButton url={loginUrl} />
+            <CopyLinkButton url={`${base}/invite/${i.token}`} />
             {manager && <ConfirmButton action={revokeInviteAction} field="inviteId" value={i.id} label={`撤回對 ${i.email} 的邀請`} question={`撤回對 ${i.email} 的邀請？`} />}
           </div>
         ))}

@@ -1,5 +1,5 @@
 import 'server-only';
-import { acceptInvite, membershipFor } from '@kdan-social/core';
+import { membershipFor } from '@kdan-social/core';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb } from './server';
@@ -23,17 +23,12 @@ export async function rememberWorkspace(workspaceId: string) {
 
 /**
  * The signed-in user and the workspace they are working in; null workspace when they
- * have not been added to one.
- *
- * Pending invites for their email are accepted first, so being invited to a second
- * workspace adds it to the switcher on the next page load. Only a confirmed email
- * counts, since the invite trusts the address to be theirs.
+ * have not joined one. Invites are joined only through their link, since emails are
+ * not verified at sign-up.
  */
 export async function currentMember() {
   const user = await requireUser();
-  const db = getDb();
-  if (user.emailConfirmed && user.email) await acceptInvite(db, { userId: user.id, email: user.email });
-  const membership = await membershipFor(db, user.id, (await cookies()).get(WORKSPACE_COOKIE)?.value);
+  const membership = await membershipFor(getDb(), user.id, (await cookies()).get(WORKSPACE_COOKIE)?.value);
   return { user, membership };
 }
 

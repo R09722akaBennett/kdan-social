@@ -39,7 +39,7 @@ export function InviteButton({ action }: { action: (f: FormData) => void }) {
                   </label>
                 ))}
               </fieldset>
-              <p className="tiny muted" style={{ margin: 0 }}>目前不會自動寄信。邀請後請把登入連結傳給對方，對方用 Email 是這個地址的 Facebook 帳號登入就會加入。</p>
+              <p className="tiny muted" style={{ margin: 0 }}>目前不會自動寄信。邀請後會產生一條邀請連結，請複製後傳給對方，對方打開連結建立帳號或登入就會加入。</p>
             </div>
             <div className="row" style={{ padding: '14px 18px', justifyContent: 'flex-end', borderTop: '1px solid var(--line-soft)', marginTop: 14 }}>
               <button type="button" className="btn" onClick={() => setOpen(false)}>取消</button>
@@ -52,12 +52,12 @@ export function InviteButton({ action }: { action: (f: FormData) => void }) {
   );
 }
 
-/** Copy the sign-in link to hand to an invitee, as Krea's pending-invite "Copy link". */
+/** Copy an invite's link to hand to the invitee, as Krea's pending-invite "Copy link". */
 export function CopyLinkButton({ url }: { url: string }) {
   const [done, setDone] = useState(false);
   return (
     <button type="button" className="btn btn-sm" onClick={async () => { await navigator.clipboard.writeText(url); setDone(true); setTimeout(() => setDone(false), 2000); }}>
-      {done ? '已複製' : '複製登入連結'}
+      {done ? '已複製' : '複製邀請連結'}
     </button>
   );
 }

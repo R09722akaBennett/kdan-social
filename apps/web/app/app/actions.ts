@@ -1,6 +1,6 @@
 'use server';
 
-import { askAssistant, deleteConversation, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, askAssistant, deleteConversation, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -177,7 +177,7 @@ export async function inviteAction(formData: FormData) {
   const email = String(formData.get('email') ?? '');
   await memberChange(
     () => inviteMember(getDb(), { workspaceId: workspace.id, email, role: String(formData.get('role')), actor: user.email, actorRole: role }),
-    `已邀請 ${email.trim().toLowerCase()}，請對方用 Email 是這個地址的 Facebook 帳號登入`,
+    `已建立給 ${email.trim().toLowerCase()} 的邀請連結，請在下方複製後傳給對方`,
   );
 }
 
@@ -345,3 +345,12 @@ export async function deleteConversationAction(formData: FormData) {
   redirect('/app/assistant');
 }
 
+
+export async function joinInviteAction(formData: FormData) {
+  const user = await requireUser();
+  const ws = await acceptInviteLink(getDb(), { token: String(formData.get('token') ?? ''), userId: user.id, email: user.email });
+  if (!ws) redirect('/app?notice=invite_used');
+  await rememberWorkspace(ws.id);
+  revalidatePath('/app', 'layout');
+  redirect(`/app?notice=${encodeURIComponent(`已加入「${ws.name}」`)}`);
+}

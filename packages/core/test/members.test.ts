@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { auditLog } from '../src/db/index';
-import { acceptInvite, changeRole, inviteMember, listInvites, listMembers, MemberError, removeMember, revokeInvite } from '../src/members';
+import { acceptInviteLink, changeRole, inviteByToken, inviteMember, listInvites, listMembers, MemberError, removeMember, revokeInvite } from '../src/members';
 import { bootstrapWorkspace, listMemberships, membershipFor } from '../src/workspace';
 import { testDb } from './helpers';
 
@@ -16,29 +16,39 @@ async function setup() {
 }
 
 describe('invites', () => {
-  it('lets an invited address join with its role on first sign-in, once', async () => {
+  it('lets whoever opens the invite link join with its role, once', async () => {
     const { db, ws } = await setup();
-    await inviteMember(db, { workspaceId: ws.id, email: ' Amy@Example.com ', role: 'editor', ...asOwner });
-    await inviteMember(db, { workspaceId: ws.id, email: 'amy@example.com', role: 'admin', ...asOwner });
+    const first = await inviteMember(db, { workspaceId: ws.id, email: ' Amy@Example.com ', role: 'editor', ...asOwner });
+    const again = await inviteMember(db, { workspaceId: ws.id, email: 'amy@example.com', role: 'admin', ...asOwner });
+    expect(again.token).toBe(first.token);
+    expect(first.token).toMatch(/^[0-9a-f]{64}$/);
     expect((await listInvites(db, ws.id)).map((i) => [i.email, i.role])).toEqual([['amy@example.com', 'admin']]);
+    expect(await inviteByToken(db, first.token)).toMatchObject({ workspace: 'KDAN', role: 'admin', email: 'amy@example.com', invitedBy: owner.email });
 
-    const joined = await acceptInvite(db, { userId: amy, email: 'AMY@example.com' });
-    expect(joined).toMatchObject({ workspace: { id: ws.id }, role: 'admin' });
-    expect((await membershipFor(db, amy))?.role).toBe('admin');
+    // The person signs up with another address; the link, not the email, admits them.
+    const joined = await acceptInviteLink(db, { token: first.token, userId: amy, email: 'Amy.Work@example.com' });
+    expect(joined?.id).toBe(ws.id);
+    expect(await membershipFor(db, amy)).toMatchObject({ role: 'admin' });
+    expect((await listMembers(db, ws.id)).map((m) => m.email)).toContain('amy.work@example.com');
     expect(await listInvites(db, ws.id)).toEqual([]);
-    expect(await acceptInvite(db, { userId: ben, email: 'ben@example.com' })).toBeNull();
+    expect(await acceptInviteLink(db, { token: first.token, userId: ben, email: 'ben@example.com' })).toBeNull();
+    expect(await inviteByToken(db, first.token)).toBeNull();
+    expect(await acceptInviteLink(db, { token: 'not-a-token', userId: ben, email: 'ben@example.com' })).toBeNull();
     expect((await db.select().from(auditLog)).map((r) => r.action)).toEqual(expect.arrayContaining(['member.invited', 'member.joined']));
   });
 
-  it('joins every workspace that invited the address, including when already in one', async () => {
+  it('adds a workspace to someone already in another, and keeps a member\'s role', async () => {
     const { db, ws } = await setup();
     const other = await bootstrapWorkspace(db, { name: '客戶 B', owner: { userId: ben, email: 'ben@example.com' } });
-    await inviteMember(db, { workspaceId: ws.id, email: 'amy@example.com', role: 'editor', ...asOwner });
-    await inviteMember(db, { workspaceId: other.id, email: 'amy@example.com', role: 'admin', actor: 'ben@example.com', actorRole: 'owner' });
-    expect(await acceptInvite(db, { userId: amy, email: 'amy@example.com' })).toMatchObject({ workspace: { id: ws.id }, role: 'editor' });
+    const toKdan = await inviteMember(db, { workspaceId: ws.id, email: 'amy@example.com', role: 'editor', ...asOwner });
+    const toB = await inviteMember(db, { workspaceId: other.id, email: 'amy@example.com', role: 'admin', actor: 'ben@example.com', actorRole: 'owner' });
+    await acceptInviteLink(db, { token: toKdan.token, userId: amy, email: 'amy@example.com' });
+    await acceptInviteLink(db, { token: toB.token, userId: amy, email: 'amy@example.com' });
     expect((await listMemberships(db, amy)).map((m) => [m.name, m.role])).toEqual([['KDAN', 'editor'], ['客戶 B', 'admin']]);
-    await inviteMember(db, { workspaceId: other.id, email: 'carl@example.com', role: 'editor', actor: 'ben@example.com', actorRole: 'owner' });
-    expect(await acceptInvite(db, { userId: amy, email: 'amy@example.com' })).toBeNull();
+    // Inviting by another address and opening it while already a member changes nothing.
+    const dup = await inviteMember(db, { workspaceId: ws.id, email: 'amy2@example.com', role: 'admin', ...asOwner });
+    await acceptInviteLink(db, { token: dup.token, userId: amy, email: 'amy@example.com' });
+    expect((await membershipFor(db, amy, ws.id))?.role).toBe('editor');
   });
 
   it('refuses bad input, existing members, owner as a role, and non-managers', async () => {
@@ -62,15 +72,15 @@ describe('invites', () => {
     const [inv] = await listInvites(db, ws.id);
     await expect(revokeInvite(db, { workspaceId: ws.id, inviteId: inv!.id, actor: 'x', actorRole: 'editor' })).rejects.toThrow(MemberError);
     await revokeInvite(db, { workspaceId: ws.id, inviteId: inv!.id, ...asOwner });
-    expect(await acceptInvite(db, { userId: amy, email: 'amy@example.com' })).toBeNull();
+    expect(await acceptInviteLink(db, { token: inv!.token, userId: amy, email: 'amy@example.com' })).toBeNull();
   });
 });
 
 describe('roles and removal', () => {
   async function withAmy() {
     const s = await setup();
-    await inviteMember(s.db, { workspaceId: s.ws.id, email: 'amy@example.com', role: 'editor', ...asOwner });
-    await acceptInvite(s.db, { userId: amy, email: 'amy@example.com' });
+    const { token } = await inviteMember(s.db, { workspaceId: s.ws.id, email: 'amy@example.com', role: 'editor', ...asOwner });
+    await acceptInviteLink(s.db, { token, userId: amy, email: 'amy@example.com' });
     return s;
   }
 

@@ -20,6 +20,7 @@ import { CreateWorkspaceForm } from '@/components/create-workspace';
 import { getDb, signupCodes } from '@/lib/server';
 
 const NOTICE: Record<string, [string, string]> = {
+  invite_used: ['warn', '這個邀請連結已經用過或被撤回了，請邀請你的人再傳一次。'],
   workspace_created: ['ok', '工作區建好了，照下面的清單一步步設定。'],
   connected: ['ok', '已連結 {n} 個帳號。'],
   line_connected: ['ok', '已連結 LINE 官方帳號「{n}」。'],
@@ -67,14 +68,14 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         {canCreate ? (
           <CreateWorkspaceForm from="/app" />
         ) : (
-          <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁邀請 {user.email}（你 Facebook 帳號的 Email），再重新整理這一頁。</div>
+          <div className="card card-pad small">目前需要被邀請才能使用。請工作區的擁有者或管理員到「成員」頁建立邀請連結傳給你，打開連結就會加入。</div>
         )}
         <div className="card card-pad small stack" style={{ gap: 4, background: 'var(--ok-soft)', border: 0 }}>
           <strong style={{ fontWeight: 600 }}>接下來</strong>
           <span>· 你會是這個工作區的擁有者，可以邀請成員、管理所有設定</span>
           <span>· 總覽頁會有一份設定清單，帶你連結帳號、送測試貼文</span>
           <span>· 對外發文預設關閉，確認沒問題後再到設定開啟</span>
-          {!canCreate && <span>· 被邀請的話，用 Email 是受邀地址的 Facebook 帳號登入就會自動加入</span>}
+          {!canCreate && <span>· 被邀請的話，打開對方傳來的邀請連結就會加入</span>}
         </div>
         <form action={signOut}><button className="btn btn-sm" type="submit">登出</button></form>
       </main>
@@ -104,7 +105,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const deltas = withCounts.map((a) => followers.get(a.id)!.delta7).filter((d): d is number => d !== null);
   const delta = deltas.reduce((s, d) => s + d, 0);
   const live = publishingAllowed(globalPublishingEnabled(), workspace);
-  const note = notice ? NOTICE[notice] : undefined;
+  // Known keys carry their own tone; any other notice is a sentence to show as is.
+  const note: [string, string] | undefined = notice ? NOTICE[notice] ?? ['ok', notice] : undefined;
   // After HoneyBook's step-by-step list and Hootsuite's dismissible Getting Started card.
   const steps = [
     { title: '連結第一個社群帳號', detail: 'Facebook 粉專、Instagram 商業帳號或 LINE 官方帳號。', href: '/app/channels#add', done: progress.accounts, optional: false },

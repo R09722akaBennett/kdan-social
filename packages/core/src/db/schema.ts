@@ -75,9 +75,12 @@ export const workspaceInvites = pgTable(
     email: text('email').notNull(),
     role: memberRole('role').notNull().default('editor'),
     invitedBy: text('invited_by').notNull(),
+    // The secret in the invite link. Emails are not verified at sign-up, so only someone
+    // holding the link may join; the email just says whom it was meant for.
+    token: text('token').notNull().default(sql`replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')`),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('invites_workspace_email').on(t.workspaceId, t.email), index('invites_email').on(t.email)],
+  (t) => [uniqueIndex('invites_workspace_email').on(t.workspaceId, t.email), index('invites_email').on(t.email), uniqueIndex('invites_token').on(t.token)],
 );
 
 /**
@@ -265,6 +268,19 @@ export const aiMessages = pgTable(
   },
   (t) => [index('ai_messages_conversation').on(t.conversationId, t.createdAt)],
 );
+
+// What a person told the onboarding questions, so the product can be shaped for them later.
+export const userProfiles = pgTable('user_profiles', {
+  userId: uuid('user_id').primaryKey(),
+  displayName: text('display_name'),
+  describes: text('describes'),
+  accounts: text('accounts'),
+  platforms: text('platforms').array().notNull().default(sql`'{}'::text[]`),
+  goals: text('goals').array().notNull().default(sql`'{}'::text[]`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Set when they finish or skip the questions; until then sign-in leads back to them. */
+  onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
+});
 
 export type GlossaryEntry = { term: string; rule: string };
 

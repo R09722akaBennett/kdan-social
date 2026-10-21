@@ -31,8 +31,11 @@ export function listInvites(db: Db, workspaceId: string) {
 }
 
 /**
- * Invite someone by email; they join when they first sign in with it. Inviting an
- * address again changes the pending invite's role.
+ * Invite someone: a link they open to join, recorded with the email it was meant for.
+ * Inviting an address again keeps its link and changes the role.
+ *
+ * Returns:
+ *   The email and the invite link's token.
  *
  * Raises:
  *   MemberError: the caller may not manage members, the email or role is invalid,
@@ -46,10 +49,11 @@ export async function inviteMember(db: Db, a: { workspaceId: string; email: stri
   const [member] = await db.select({ email: workspaceMembers.email }).from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, a.workspaceId), eq(workspaceMembers.email, email)));
   if (member) throw new MemberError(`${email} 已經是成員了。`);
-  await db.insert(workspaceInvites).values({ workspaceId: a.workspaceId, email, role, invitedBy: a.actor })
-    .onConflictDoUpdate({ target: [workspaceInvites.workspaceId, workspaceInvites.email], set: { role, invitedBy: a.actor } });
+  const [inv] = await db.insert(workspaceInvites).values({ workspaceId: a.workspaceId, email, role, invitedBy: a.actor })
+    .onConflictDoUpdate({ target: [workspaceInvites.workspaceId, workspaceInvites.email], set: { role, invitedBy: a.actor } })
+    .returning({ token: workspaceInvites.token });
   await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'member.invited', target: email, detail: { role } });
-  return { email };
+  return { email, token: inv!.token };
 }
 
 /**
@@ -104,26 +108,31 @@ export async function removeMember(db: Db, a: { workspaceId: string; userId: str
   await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'member.removed', target: m.email, detail: { role: m.role } });
 }
 
+/** What an invite link offers, for the page it opens; null when the link is used up or wrong. */
+export async function inviteByToken(db: Db, token: string) {
+  if (!/^[0-9a-f]{64}$/.test(token)) return null;
+  const [row] = await db.select({ workspaceId: workspaces.id, workspace: workspaces.name, role: workspaceInvites.role, email: workspaceInvites.email, invitedBy: workspaceInvites.invitedBy })
+    .from(workspaceInvites).innerJoin(workspaces, eq(workspaces.id, workspaceInvites.workspaceId)).where(eq(workspaceInvites.token, token));
+  return row ?? null;
+}
+
 /**
- * Turn every pending invite for a signed-in user's email into a membership.
- *
- * Call it only with an email the auth provider has verified; the invite trusts it.
+ * Join the workspace an invite link is for, with the invite's role, and use the link up.
+ * Whoever opens the link joins, under their own sign-in email.
  *
  * Returns:
- *   The oldest invite's workspace and role, or null when no invite waits for this email.
+ *   The workspace joined, or null when the link is used up or wrong. Someone already
+ *   in the workspace keeps their role.
  */
-export async function acceptInvite(db: Db, a: { userId: string; email: string }) {
+export async function acceptInviteLink(db: Db, a: { token: string; userId: string; email: string }) {
+  if (!/^[0-9a-f]{64}$/.test(a.token)) return null;
   const email = a.email.trim().toLowerCase();
   return db.transaction(async (tx) => {
-    // Several workspaces may have invited the same person; they join all of them.
-    const invites = await tx.select().from(workspaceInvites).where(eq(workspaceInvites.email, email)).orderBy(asc(workspaceInvites.createdAt));
-    if (!invites.length) return null;
-    for (const inv of invites) {
-      await tx.insert(workspaceMembers).values({ workspaceId: inv.workspaceId, userId: a.userId, email, role: inv.role }).onConflictDoNothing();
-      await tx.delete(workspaceInvites).where(eq(workspaceInvites.id, inv.id));
-      await tx.insert(auditLog).values({ workspaceId: inv.workspaceId, actor: email, action: 'member.joined', target: email, detail: { role: inv.role, invitedBy: inv.invitedBy } });
-    }
-    const [ws] = await tx.select().from(workspaces).where(eq(workspaces.id, invites[0]!.workspaceId));
-    return { workspace: ws!, role: invites[0]!.role };
+    const [inv] = await tx.delete(workspaceInvites).where(eq(workspaceInvites.token, a.token)).returning();
+    if (!inv) return null;
+    await tx.insert(workspaceMembers).values({ workspaceId: inv.workspaceId, userId: a.userId, email, role: inv.role }).onConflictDoNothing();
+    await tx.insert(auditLog).values({ workspaceId: inv.workspaceId, actor: email, action: 'member.joined', target: email, detail: { role: inv.role, invitedBy: inv.invitedBy, invitedAs: inv.email } });
+    const [ws] = await tx.select().from(workspaces).where(eq(workspaces.id, inv.workspaceId));
+    return ws!;
   });
 }

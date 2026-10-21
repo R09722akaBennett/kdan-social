@@ -224,3 +224,9 @@ th:last-child, td:last-child { padding-right: 18px; }
 @keyframes login-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -6px; } }
 @media (prefers-reduced-motion: reduce) { .login-week, .login-float { animation: none; } }
 @media (max-width: 900px) { .login { padding: 16px; } .login-showcase { display: none; } }
+
+.auth-fields { width: 100%; display: flex; flex-direction: column; gap: 14px; margin-top: 24px; text-align: left; }
+.auth-submit { width: 100%; min-height: 46px; font-size: 15px; margin-top: 4px; }
+.auth-alt { margin: 18px 0 0; font-size: 14px; color: var(--ink-2); }
+.auth-legal { margin: 14px 0 0; }
+.auth-title { font-size: 26px; margin-top: 18px; }
