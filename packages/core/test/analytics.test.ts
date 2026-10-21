@@ -58,6 +58,7 @@ describe('collecting and reading performance', () => {
     const rows = await postPerformance(db, { workspaceId: ws.id, from: new Date('2026-10-01T00:00:00Z'), groupIds: [tw] });
     expect(rows.map((r) => [r.postId, r.title, r.groupName, r.engagements])).toEqual([[postId, '雙十一', '台灣', 10]]);
     expect(await postPerformance(db, { workspaceId: ws.id, from: new Date('2026-10-01T00:00:00Z'), groupIds: [null] })).toEqual([]);
+    expect(await postPerformance(db, { workspaceId: ws.id, from: new Date('2026-10-01T00:00:00Z'), accountId: '00000000-0000-4000-8000-0000000000aa' })).toEqual([]);
   });
 
   it('leaves posts older than 30 days alone and logs a failure without stopping', async () => {

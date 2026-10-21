@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { notify } from './notifications';
-import { accountGroups, accountPosts, auditLog, connectedAccounts, postComments, postVariants, posts, publishTasks, type Db } from './db/index';
+import { accountGroups, accountPosts, auditLog, connectedAccounts, postComments, postMetrics, postVariants, posts, publishTasks, type Db } from './db/index';
 
 /** A review action refused; the message is shown to the user as is. */
 export class ReviewError extends Error {}
@@ -92,12 +92,15 @@ export async function reviewDetail(db: Db, a: { workspaceId: string; postId: str
         commentId: publishTasks.commentId, commentError: publishTasks.commentError,
         // Known once the nightly import has read the post back from the account.
         permalink: accountPosts.permalink,
+        // Null until the daily collector has read the published post's numbers.
+        metrics: { engagements: postMetrics.engagements, opens: postMetrics.opens, reach: postMetrics.reach, views: postMetrics.views, detail: postMetrics.detail, insights: postMetrics.insights, fetchedAt: postMetrics.fetchedAt },
       })
       .from(postVariants)
       .innerJoin(publishTasks, eq(publishTasks.variantId, postVariants.id))
       .innerJoin(connectedAccounts, eq(connectedAccounts.id, publishTasks.accountId))
       .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId))
       .leftJoin(accountPosts, and(eq(accountPosts.accountId, publishTasks.accountId), eq(accountPosts.externalId, publishTasks.externalPostId)))
+      .leftJoin(postMetrics, eq(postMetrics.taskId, publishTasks.id))
       .where(eq(postVariants.postId, post.id))
       .orderBy(asc(publishTasks.runAt), asc(connectedAccounts.name)),
     db.select().from(postComments).where(eq(postComments.postId, post.id)).orderBy(asc(postComments.createdAt)),

@@ -156,11 +156,13 @@ describe('analytics queries over collected insights', () => {
     expect(all.days.map((d) => [d.day, d.reach])).toEqual([['2026-10-18', 30], ['2026-10-19', 45]]);
     expect(all.byAccount.get(y)).toMatchObject({ reach: 5 });
     expect((await dailyTotals(db, { workspaceId: ws.id, from, to, groupIds: [tw] })).current.reach).toBe(70);
+    expect((await dailyTotals(db, { workspaceId: ws.id, from, to, accountId: y })).current).toMatchObject({ reach: 5, views: 5 });
 
     await db.insert(audienceBreakdowns).values([
       { accountId: x, kind: 'city', unit: 'count', items: [{ key: 'Taipei', value: 9 }] },
       { accountId: x, kind: 'age', unit: 'count', items: [{ key: '25-34', value: 5 }] },
     ]);
     expect((await audienceFor(db, { workspaceId: ws.id })).get(x)!.map((b) => b.kind)).toEqual(['age', 'city']);
+    expect((await audienceFor(db, { workspaceId: ws.id, accountId: y })).size).toBe(0);
   });
 });
