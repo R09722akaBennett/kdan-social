@@ -1,6 +1,6 @@
 'use server';
 
-import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, GoalError, InboxError, replyToComment, setCommentStatus, setPostingGoal, syncComments, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, addFeed, askAssistant, deleteConversation, deleteFeed, deleteIdea, deleteTag, FeedError, getFeedItem, refreshFeeds, GoalError, InboxError, replyToComment, setCommentStatus, setPostingGoal, syncComments, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -449,4 +449,51 @@ export async function refreshInboxAction() {
     const r = await syncComments({ ...deps(), workspaceId: workspace.id, log: (l) => console.log(l) });
     return r.failed ? `已更新 ${r.accounts} 個帳號，${r.failed} 個讀取失敗（多半是缺少留言權限）` : `已更新，讀到 ${r.comments} 則留言`;
   }, '/app/inbox');
+}
+
+async function feedChange(run: () => Promise<string>) {
+  let notice: string;
+  try {
+    notice = await run();
+  } catch (e) {
+    if (e instanceof FeedError || e instanceof IdeaError) redirect(`/app/ideas?tab=feeds&error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app/ideas');
+  redirect(`/app/ideas?tab=feeds&notice=${encodeURIComponent(notice)}`);
+}
+
+export async function addFeedAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  await feedChange(async () => {
+    const feed = await addFeed(getDb(), { fetch }, { workspaceId: workspace.id, actor: user.email, url: String(formData.get('url') ?? '') });
+    return `已訂閱「${feed.title}」`;
+  });
+}
+
+export async function deleteFeedAction(formData: FormData) {
+  const { workspace } = await requireWorkspace();
+  await feedChange(async () => {
+    await deleteFeed(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') });
+    return '已取消訂閱';
+  });
+}
+
+export async function refreshFeedsAction() {
+  const { workspace } = await requireWorkspace();
+  await feedChange(async () => {
+    const r = await refreshFeeds(getDb(), { fetch }, { workspaceId: workspace.id, log: (l) => console.log(l) });
+    return r.failed ? `已更新 ${r.feeds} 個來源，${r.failed} 個讀取失敗` : `已更新 ${r.feeds} 個來源`;
+  });
+}
+
+/** Keep a feed entry on the ideas board, with its link, to write about later. */
+export async function feedToIdeaAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  await feedChange(async () => {
+    const row = await getFeedItem(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') });
+    if (!row) throw new FeedError('找不到這篇文章，請重新整理後再試。');
+    await saveIdea(getDb(), { workspaceId: workspace.id, actor: user.email, title: row.item.title.slice(0, 120), body: [row.item.summary, row.item.link].filter(Boolean).join('\n\n') });
+    return '已存成點子';
+  });
 }

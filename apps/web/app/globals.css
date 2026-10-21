@@ -461,3 +461,8 @@ th:last-child, td:last-child { padding-right: 18px; }
 .inbox-replied { margin-left: 34px; padding: 6px 10px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); }
 .reply-form { margin-left: 34px; display: flex; flex-direction: column; gap: 6px; }
 .reply-form textarea { resize: vertical; }
+
+/* Feed entries, after Buffer's Feeds: the picture left, the story right. */
+.feed-entry { display: flex; gap: 14px; padding: 14px 16px; align-items: flex-start; }
+.feed-thumb { width: 120px; height: 80px; flex: none; object-fit: cover; border-radius: 8px; background: var(--sunken); }
+@media (max-width: 600px) { .feed-thumb { width: 72px; height: 56px; } }

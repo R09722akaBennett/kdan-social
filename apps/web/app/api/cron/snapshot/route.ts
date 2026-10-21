@@ -1,4 +1,5 @@
-import { collectInsights, collectPostMetrics, importAccountPosts, snapshotFollowers, syncComments } from '@kdan-social/core';
+import { collectInsights, collectPostMetrics, importAccountPosts, refreshFeeds, snapshotFollowers, syncComments } from '@kdan-social/core';
+import { getDb } from '@/lib/server';
 import { deps, isCronRequest } from '@/lib/server';
 
 export const maxDuration = 300;
@@ -13,5 +14,6 @@ export async function GET(req: Request) {
   const insights = await collectInsights({ ...deps(), log });
   // After the import, which supplies the posts whose comments are read.
   const comments = await syncComments({ ...deps(), log });
-  return Response.json({ ...followers, posts, imported, insights, comments });
+  const feeds = await refreshFeeds(getDb(), { fetch }, { log });
+  return Response.json({ ...followers, posts, imported, insights, comments, feeds });
 }
