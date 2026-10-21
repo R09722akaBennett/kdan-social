@@ -69,12 +69,28 @@ values ('media', 'media', true, 8388608, array['image/jpeg']);
 ## 登入與 Meta 授權
 
 - **Supabase Auth**：Site URL 設正式網址；Redirect URLs 加 `<正式網址>/auth/callback`
-  與 `http://localhost:3000/auth/callback`。登入只用 Facebook，Email provider 關閉：Providers 的
-  Facebook 填**登入專用**的 Meta app（消費者類型，只要 `email` 與 `public_profile`）的 App ID 與
-  Secret。發文用的 app 是商業類型，Facebook 不讓它只要 `email` 登入（會顯示「This app needs at least
-  one supported permission」），所以兩個 app 分開。
-- **新成員**：用 Facebook 登入後，若有工作區用他 Facebook 帳號的 Email 邀請過他，就會自動加入；
-  沒有的話可以用 `SIGNUP_CODES` 的邀請碼自己建立工作區。
+  與 `http://localhost:3000/auth/callback`。登入用 Email＋密碼：Providers 開啟 Email、關閉
+  Facebook；「Confirm email」關閉（跟 Buffer 一樣註冊完直接進去）；密碼最短 8 碼。
+- **新成員**：邀請是一條只能用一次的連結，不靠 Email 比對，因為註冊時不驗證 Email。沒有被邀請的人
+  可以用 `SIGNUP_CODES` 的邀請碼自己建立工作區。
+- **重設密碼信**：Email Templates → Reset Password 的連結改成
+  `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`。這個連結在任何瀏覽器都能用，
+  而且要按下頁面上的按鈕才會用掉，Outlook 的連結掃描不會先把它用掉。
+
+### 寄信服務（正式對外前必做）
+
+Supabase 內建的寄信只寄給組織成員，每小時也只能寄幾封，客戶會收不到重設密碼的信。改用 Resend：
+
+1. 在 Resend 建帳號，Domains 加一個**我們能改 DNS 的網域**（例如 `mail.kdanmobile.com`），照畫面加上
+   它給的 SPF、DKIM 記錄，等狀態變成 Verified。`*.vercel.app` 不能用，因為改不了它的 DNS。
+2. Resend → API Keys 建一把只有 Sending access 的 key。
+3. Supabase → Authentication → Emails → SMTP Settings 開啟 Custom SMTP：Host `smtp.resend.com`、
+   Port `465`、Username `resend`、Password 填剛才的 API key、Sender email 用驗證過的網域
+   （例如 `no-reply@mail.kdanmobile.com`）、Sender name `kdan-social`。
+4. 同一頁的 Rate Limits 把「Emails sent per hour」調到預估用量以上（預設很低）。
+5. 驗證：在登入頁按「忘記密碼？」，寄給一個**不是** Supabase 組織成員的信箱，確認收得到，而且信裡的
+   連結開頭是 `<正式網址>/auth/confirm`。收不到時看 Resend → Logs 與 Supabase → Logs → Auth。
+
 - **Meta app**：兩個用途「Manage everything on your Page」與「Manage messaging & content on
   Instagram（API setup with Facebook Login）」，權限要包含 `META_SCOPES`
   （`packages/core/src/platforms/meta-oauth.ts`）列出的每一項；Facebook Login for Business 的
