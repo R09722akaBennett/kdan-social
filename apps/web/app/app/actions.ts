@@ -1,6 +1,6 @@
 'use server';
 
-import { listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { askAssistant, deleteConversation, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -322,3 +322,25 @@ export async function markAllReadAction() {
   redirect('/app/notifications');
 }
 
+export type AskState = { error?: string; message?: string };
+
+/** One question to the assistant; on failure the typed message comes back so nothing is lost. */
+export async function askAction(_prev: AskState, formData: FormData): Promise<AskState> {
+  const { user, workspace } = await requireWorkspace();
+  const message = String(formData.get('message') ?? '');
+  const conversationId = String(formData.get('conversation') ?? '') || undefined;
+  let id: string;
+  try {
+    ({ conversationId: id } = await askAssistant(getDb(), aiWriter('insights'), { workspaceId: workspace.id, userId: user.id, actor: user.email, conversationId, message }));
+  } catch (e) {
+    if (e instanceof AiError) return { error: e.message, message };
+    throw e;
+  }
+  redirect(`/app/assistant?c=${id}`);
+}
+
+export async function deleteConversationAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  await deleteConversation(getDb(), { workspaceId: workspace.id, userId: user.id, id: String(formData.get('id')) });
+  redirect('/app/assistant');
+}

@@ -56,11 +56,14 @@ export type EditPost = {
   when: string;
 };
 
+/** A post proposed elsewhere (the AI assistant's plan), to start a new post from. */
+export type StartPost = { accountIds: string[]; main: string; date: string; time: string };
+
 const ACTION_LABEL = { rephrase: '改寫', shorten: '縮短', casual: '更口語', formal: '更正式', tags: '建議標籤', ask: '依你的指示修改' } as const;
 type Action = keyof typeof ACTION_LABEL;
 
-export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, aiReady, banned }: {
-  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost;
+export default function Composer({ workspace, role, groups, accounts, supabase, lineUsage, edit, start, aiReady, banned }: {
+  workspace: string; role: string; groups: Group[]; accounts: Account[]; supabase: { url: string; key: string }; lineUsage: LineUsage[]; edit?: EditPost; start?: StartPost;
   aiReady: boolean; banned: string[];
 }) {
   const [right, setRight] = useState<'ai' | 'preview'>(aiReady ? 'ai' : 'preview');
@@ -68,8 +71,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const [suggestion, setSuggestion] = useState<AiResult | null>(null);
   const [ask, setAsk] = useState('');
   const [aiBusy, setAiBusy] = useState<string | null>(null);
-  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((edit?.accountIds ?? []).map((id) => [id, true])));
-  const [main, setMain] = useState(edit?.main ?? '');
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries((edit?.accountIds ?? start?.accountIds ?? []).map((id) => [id, true])));
+  const [main, setMain] = useState(edit?.main ?? start?.main ?? '');
   // Text customised for one account; an account without an entry uses the main text.
   const [custom, setCustom] = useState<Record<string, string>>(edit?.custom ?? {});
   const [customizing, setCustomizing] = useState(Object.keys(edit?.custom ?? {}).length > 0);
@@ -87,8 +90,8 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const [uploadError, setUploadError] = useState('');
   const viewerTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const [mode, setMode] = useState<'keep' | 'now' | 'local' | 'same'>(edit ? 'keep' : 'local');
-  const [date, setDate] = useState(() => todayIn(viewerTz));
-  const [time, setTime] = useState('20:00');
+  const [date, setDate] = useState(() => start?.date ?? todayIn(viewerTz));
+  const [time, setTime] = useState(start?.time ?? '20:00');
   const [state, action, pending] = useActionState<SubmitState, FormData>(submitPost, {});
 
   // An edited post keeps its accounts, so only those are offered.

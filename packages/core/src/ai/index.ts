@@ -4,6 +4,7 @@ import { AiError, modelFor, type AiTask, type Writer } from './writer';
 export * from './writer';
 export * from './prompts';
 export * from './service';
+export * from './assistant';
 export { fromChatCompletion, fromClaude, fromGemini, gcpConfig, parseSpec, providerWriter } from './providers';
 
 /**

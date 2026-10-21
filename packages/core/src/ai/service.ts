@@ -10,7 +10,7 @@ const TEXT_MAX = 5000;
 // A cost guard, not a product limit: far above what a team does by hand in an hour.
 const HOURLY_MAX = 200;
 
-async function guard(db: Db, workspaceId: string, text: string) {
+export async function checkAiRequest(db: Db, workspaceId: string, text: string) {
   if (!text.trim()) throw new AiError('先寫一些內容，AI 才能幫忙改。');
   if (text.length > TEXT_MAX) throw new AiError(`內容超過 ${TEXT_MAX} 字，請先縮短。`);
   const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(auditLog)
@@ -35,7 +35,7 @@ async function run(db: Db, writer: Writer, a: { workspaceId: string; actor: stri
  */
 export async function aiRewrite(db: Db, writer: Writer, a: { workspaceId: string; actor: string; action: RewriteAction; text: string; instruction?: string }) {
   if (a.action === 'ask' && !a.instruction?.trim()) throw new AiError('請寫下想怎麼改。');
-  await guard(db, a.workspaceId, a.text);
+  await checkAiRequest(db, a.workspaceId, a.text);
   const voice = await getVoice(db, a.workspaceId);
   return run(db, writer, { ...a, kind: `rewrite:${a.action}`, voice, system: `${BASE_SYSTEM}\n\n${voiceAddendum(voice)}`, prompt: rewritePrompt(a.action, a.text, a.instruction?.slice(0, 500)) });
 }
@@ -53,7 +53,7 @@ export async function aiAdapt(db: Db, writer: Writer, a: { workspaceId: string; 
     .leftJoin(accountGroups, eq(accountGroups.id, connectedAccounts.groupId))
     .where(and(eq(connectedAccounts.id, a.accountId), eq(connectedAccounts.workspaceId, a.workspaceId)));
   if (!row) throw new AiError('找不到這個帳號，請重新整理後再試。');
-  await guard(db, a.workspaceId, a.text);
+  await checkAiRequest(db, a.workspaceId, a.text);
   const voice = await getVoice(db, a.workspaceId);
   const groupVoice = row.account.groupId ? (await getGroupVoices(db, a.workspaceId)).get(row.account.groupId) : undefined;
   const addendum = voiceAddendum(voice, row.groupName ? { name: row.groupName, voice: groupVoice } : undefined);
@@ -68,7 +68,7 @@ export async function aiAdapt(db: Db, writer: Writer, a: { workspaceId: string; 
  *   AiError: empty topic, the hourly cap is reached, or the AI failed.
  */
 export async function aiSamples(db: Db, writer: Writer, a: { workspaceId: string; actor: string; topic: string; voice: Voice; groups: Array<{ id: string; name: string; voice: GroupVoice }> }) {
-  await guard(db, a.workspaceId, a.topic);
+  await checkAiRequest(db, a.workspaceId, a.topic);
   const voice = normaliseVoice(a.voice);
   const targets = [{ id: null as string | null, name: '品牌', group: undefined as { name: string; voice: GroupVoice } | undefined },
     ...a.groups.filter((g) => g.voice.rules.trim() || g.voice.examples.length).slice(0, 5).map((g) => ({ id: g.id as string | null, name: g.name, group: { name: g.name, voice: g.voice } }))];
@@ -108,7 +108,7 @@ export async function aiInsights(db: Db, writer: Writer, a: { workspaceId: strin
   lines.push('', '# Published posts (engagements: FB reactions+comments+shares, IG likes+comments, LINE clicks; opens: LINE only)');
   for (const p of perf) lines.push(`- ${p.publishedAt?.toISOString().slice(0, 16)} ${p.account} (${p.platform}${p.source === 'platform' ? ', posted outside kdan-social' : ''}): "${p.title}" engagements=${p.engagements ?? 'n/a'} reach=${p.reach ?? 'n/a'} views=${p.views ?? 'n/a'}${p.opens != null ? ` opens=${p.opens}` : ''}`);
   if (!followerLines && !perf.length && !totals.days.length) throw new AiError('還沒有足夠的數字可以分析；粉絲數每天更新一次，發文後隔天會有互動數。');
-  await guard(db, a.workspaceId, 'x');
+  await checkAiRequest(db, a.workspaceId, 'x');
   const out = await writer({ system: INSIGHTS_SYSTEM, prompt: insightsPrompt(lines.join('\n'), a.days) });
   await db.insert(auditLog).values({ workspaceId: a.workspaceId, actor: a.actor, action: 'ai.used', detail: { kind: 'insights', model: out.model ?? null, input: out.usage.input, output: out.usage.output } });
   return out.text.split('\n').map((l) => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean);

@@ -236,6 +236,36 @@ export const notifications = pgTable(
   (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
 );
 
+// A member's own conversations with the AI assistant; nobody else in the workspace sees them.
+export const aiConversations = pgTable(
+  'ai_conversations',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull(),
+    title: text('title').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_conversations_owner').on(t.userId, t.workspaceId, t.updatedAt)],
+);
+
+export type PlanItem = { date: string; time: string; accountIds: string[]; topic: string; body: string };
+
+export const aiMessages = pgTable(
+  'ai_messages',
+  {
+    id: id(),
+    conversationId: uuid('conversation_id').notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
+    role: text('role').$type<'user' | 'assistant'>().notNull(),
+    content: text('content').notNull(),
+    /** Posts the assistant proposed, already checked against the workspace's accounts. */
+    plan: jsonb('plan').$type<PlanItem[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_messages_conversation').on(t.conversationId, t.createdAt)],
+);
+
 export type GlossaryEntry = { term: string; rule: string };
 
 /** How the workspace writes. AI prompts are built from this; the composer checks `banned` itself. */
