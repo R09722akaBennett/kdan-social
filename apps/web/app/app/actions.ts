@@ -1,6 +1,6 @@
 'use server';
 
-import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, GoalError, setPostingGoal, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, deleteTag, GoalError, InboxError, replyToComment, setCommentStatus, setPostingGoal, syncComments, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -406,4 +406,47 @@ export async function setGoalAction(formData: FormData) {
   }
   revalidatePath(`/app/channels/${accountId}`);
   redirect(`/app/channels/${accountId}?notice=${encodeURIComponent(goal == null ? '已清除發文目標' : `目標設為每週 ${goal} 篇`)}`);
+}
+
+async function inboxChange(run: () => Promise<string>, back: string) {
+  let notice: string;
+  try {
+    notice = await run();
+  } catch (e) {
+    if (e instanceof InboxError) redirect(`${back}${back.includes('?') ? '&' : '?'}error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app', 'layout');
+  redirect(`${back}${back.includes('?') ? '&' : '?'}notice=${encodeURIComponent(notice)}`);
+}
+
+// Where the inbox form came from, so filters survive the round trip; only inbox pages.
+const inboxBack = (formData: FormData) => {
+  const back = String(formData.get('back') ?? '');
+  return back.startsWith('/app/inbox') ? back : '/app/inbox';
+};
+
+export async function replyCommentAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  await inboxChange(async () => {
+    const { dryRun } = await replyToComment({ ...deps(), globalEnabled: globalPublishingEnabled(), log: (l) => console.log(l) }, { workspaceId: workspace.id, id: String(formData.get('id') ?? ''), text: String(formData.get('text') ?? ''), actor: user.email });
+    return dryRun ? '對外發文關閉中，回覆只記錄為 dry-run，沒有送出' : '已回覆';
+  }, inboxBack(formData));
+}
+
+export async function setCommentStatusAction(formData: FormData) {
+  const { workspace } = await requireWorkspace();
+  const status = formData.get('status') === 'open' ? 'open' : 'done';
+  await inboxChange(async () => {
+    await setCommentStatus(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? ''), status });
+    return status === 'done' ? '已標為處理完成' : '已移回待處理';
+  }, inboxBack(formData));
+}
+
+export async function refreshInboxAction() {
+  const { workspace } = await requireWorkspace();
+  await inboxChange(async () => {
+    const r = await syncComments({ ...deps(), workspaceId: workspace.id, log: (l) => console.log(l) });
+    return r.failed ? `已更新 ${r.accounts} 個帳號，${r.failed} 個讀取失敗（多半是缺少留言權限）` : `已更新，讀到 ${r.comments} 則留言`;
+  }, '/app/inbox');
 }

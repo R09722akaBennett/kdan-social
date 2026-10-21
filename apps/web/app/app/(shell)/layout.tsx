@@ -1,4 +1,4 @@
-import { listAccounts, listGroups, listMemberships, overviewCounts, unreadCount } from '@kdan-social/core';
+import { listAccounts, listGroups, listMemberships, openComments, overviewCounts, unreadCount } from '@kdan-social/core';
 import type { ReactNode } from 'react';
 import { AppShell, NavLinks, type NavItem } from '@/components/AppShell';
 import { Icon } from '@/components/ui';
@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   const db = getDb();
   const ws = membership.workspace;
-  const [groups, accounts, counts, unread, workspaces] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id }), listMemberships(db, user.id)]);
+  const [groups, accounts, counts, unread, workspaces, comments] = await Promise.all([listGroups(db, ws.id), listAccounts(db, ws.id), overviewCounts(db, { workspaceId: ws.id }), unreadCount(db, { workspaceId: ws.id, userId: user.id }), listMemberships(db, user.id), openComments(db, ws.id)]);
   const expired = accounts.filter((a) => a.status !== 'active');
   const missing = PLATFORMS.filter((p) => !accounts.some((a) => a.platform === p.pf));
   const nav: NavItem[] = [
@@ -31,6 +31,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     { href: '/app/notifications', label: '通知', icon: 'bell', badge: { n: unread, bg: 'var(--accent-soft)', fg: 'var(--accent)' } },
     { href: '/app/ideas', label: '點子與範本', icon: 'edit' },
     { href: '/app/calendar', label: '行事曆', icon: 'calendar' },
+    // After Buffer's Community: comments waiting for an answer.
+    { href: '/app/inbox', label: '留言', icon: 'comment', badge: { n: comments, bg: 'var(--accent-soft)', fg: 'var(--accent)' } },
     { href: '/app/approvals', label: '待審核', icon: 'check', badge: { n: counts.pendingReview.posts, bg: 'var(--warn-soft)', fg: 'var(--warn)' } },
     { href: '/app/assistant', label: 'AI 助理', icon: 'spark' },
     { href: '/app/analytics', label: '成效', icon: 'chart' },

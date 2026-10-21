@@ -448,3 +448,16 @@ th:last-child, td:last-child { padding-right: 18px; }
 .slot-row { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border: 1px dashed var(--control); border-radius: var(--radius); color: var(--ink-2); background: var(--surface); }
 .slot-row:hover { border-color: var(--accent); color: var(--accent); }
 .goal-progress { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Comment inbox, after Buffer's Community: a card per post, replies indented under their comment. */
+.inbox-post { overflow: hidden; }
+.inbox-post-head { gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); background: var(--sunken); flex-wrap: nowrap; }
+.inbox-post-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-comment { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 6px; }
+.inbox-comment:last-child { border-bottom: 0; }
+.inbox-comment[data-reply='true'] { padding-left: 52px; }
+.inbox-avatar { width: 26px; height: 26px; border-radius: 13px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
+.inbox-text { margin: 0 0 0 34px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.inbox-replied { margin-left: 34px; padding: 6px 10px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); }
+.reply-form { margin-left: 34px; display: flex; flex-direction: column; gap: 6px; }
+.reply-form textarea { resize: vertical; }
