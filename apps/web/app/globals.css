@@ -391,3 +391,15 @@ th:last-child, td:last-child { padding-right: 18px; }
 .channel-card-foot { gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line-soft); }
 @media (max-width: 600px) { .channel-item { flex-direction: column; gap: 6px; } .channel-when { width: auto; flex-direction: row; align-items: center; padding-top: 0; } .channel-thumb { width: 64px; height: 64px; } }
 .channel-warn { background: var(--warn-soft); color: var(--warn); }
+
+/* Ideas board, after Buffer's: four columns that scroll sideways on a narrow screen. */
+.idea-board { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.idea-column { background: var(--sunken); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 160px; }
+.idea-column-head { gap: 6px; padding: 2px 4px; }
+.idea-column-head h2 { font-size: 14px; }
+.idea-card { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.idea-body { margin: 0; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.idea-actions { gap: 4px; margin-top: 4px; }
+.idea-actions .icon-btn { width: 30px; min-height: 30px; height: 30px; padding: 0; justify-content: center; }
+.idea-empty { padding: 8px 4px; }
+.template-card { gap: 10px; }

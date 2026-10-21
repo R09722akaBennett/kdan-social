@@ -29,6 +29,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const nav: NavItem[] = [
     { href: '/app', label: '總覽', icon: 'home' },
     { href: '/app/notifications', label: '通知', icon: 'bell', badge: { n: unread, bg: 'var(--accent-soft)', fg: 'var(--accent)' } },
+    { href: '/app/ideas', label: '點子與範本', icon: 'edit' },
     { href: '/app/calendar', label: '行事曆', icon: 'calendar' },
     { href: '/app/approvals', label: '待審核', icon: 'check', badge: { n: counts.pendingReview.posts, bg: 'var(--warn-soft)', fg: 'var(--warn)' } },
     { href: '/app/assistant', label: 'AI 助理', icon: 'spark' },

@@ -1,6 +1,6 @@
 'use server';
 
-import { acceptInviteLink, askAssistant, deleteConversation, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
+import { acceptInviteLink, askAssistant, deleteConversation, deleteIdea, IdeaError, moveIdea, saveIdea, listMemberships, markRead, AccessError, AiError, cancelPost, createWorkspaceForUser, dismissOnboarding, updateWorkspaceSettings, WorkspaceError, importAccountPosts, listAccounts, aiInsights, aiSamples, changeRole, aiWriter, commentOnPost, ComposeError, completeMetaConnect, ConnectError, connectLine, decidePost, deleteGroup, globalPublishingEnabled, GroupError, inviteMember, lineClient, loadKey, mask, MemberError, queueDryRunTest, removeMember, revokeInvite, ReviewError, saveGroup, saveVoice, setAccountTimeZone, setPublishing, VoiceError, type GroupVoice, type Voice } from '@kdan-social/core';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { redirect } from 'next/navigation';
@@ -353,4 +353,34 @@ export async function joinInviteAction(formData: FormData) {
   await rememberWorkspace(ws.id);
   revalidatePath('/app', 'layout');
   redirect(`/app?notice=${encodeURIComponent(`已加入「${ws.name}」`)}`);
+}
+
+async function ideaChange(run: () => Promise<unknown>, notice?: string) {
+  try {
+    await run();
+  } catch (e) {
+    if (e instanceof IdeaError) redirect(`/app/ideas?error=${encodeURIComponent(e.message)}`);
+    throw e;
+  }
+  revalidatePath('/app/ideas');
+  redirect(notice ? `/app/ideas?notice=${encodeURIComponent(notice)}` : '/app/ideas');
+}
+
+export async function saveIdeaAction(formData: FormData) {
+  const { user, workspace } = await requireWorkspace();
+  const id = formData.get('id') ? String(formData.get('id')) : undefined;
+  await ideaChange(
+    () => saveIdea(getDb(), { workspaceId: workspace.id, actor: user.email, id, title: String(formData.get('title') ?? ''), body: String(formData.get('body') ?? ''), status: String(formData.get('status') ?? 'unassigned') }),
+    id ? '已更新點子' : '已新增點子',
+  );
+}
+
+export async function moveIdeaAction(formData: FormData) {
+  const { workspace } = await requireWorkspace();
+  await ideaChange(() => moveIdea(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? ''), status: String(formData.get('status') ?? '') }));
+}
+
+export async function deleteIdeaAction(formData: FormData) {
+  const { workspace } = await requireWorkspace();
+  await ideaChange(() => deleteIdea(getDb(), { workspaceId: workspace.id, id: String(formData.get('id') ?? '') }), '已刪除點子');
 }
