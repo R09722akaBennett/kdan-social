@@ -12,6 +12,8 @@ export type PublishInput = {
   media: MediaItem[];
   /** Stable per task, so a retried request can be recognised by platforms that support it. */
   idempotencyKey: string;
+  /** Instagram's Reel or story; every other platform only takes `post`. */
+  format?: 'post' | 'reel' | 'story';
 };
 
 export type PublishResult = { externalPostId: string };

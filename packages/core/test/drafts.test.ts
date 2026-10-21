@@ -94,6 +94,25 @@ describe('first comment', () => {
   });
 });
 
+describe('post formats', () => {
+  it('takes a Reel or story only on Instagram, with the media each needs, and no video in a regular post', async () => {
+    const { db, ws, fb, ig } = await setup();
+    const post = (format: 'post' | 'reel' | 'story', accountIds: string[], media: Array<{ url: string; type?: 'image' | 'video' }>) =>
+      createPost(db, { workspaceId: ws.id, ...asOwner, body: '新品', accountIds, media, format, schedule: LATER, now: NOW });
+    const video = { url: 'https://cdn.example.com/a.mp4', type: 'video' as const };
+    await expect(post('reel', [ig, fb], [video])).rejects.toThrow(/只能發到 Instagram/);
+    await expect(post('reel', [ig], IMG)).rejects.toThrow(/影片/);
+    await expect(post('story', [ig], [...IMG, ...IMG])).rejects.toThrow(/剛好/);
+    await expect(post('post', [ig], [video])).rejects.toThrow(/Reel/);
+    const { postId } = await post('reel', [ig], [video]);
+    await post('story', [ig], [video]);
+    const [row] = await db.select().from(posts).where(eq(posts.id, postId));
+    expect(row!.format).toBe('reel');
+    // Editing without a format keeps the Reel, and its rules.
+    await expect(updatePost(db, { workspaceId: ws.id, ...asOwner, postId, body: '新品', media: IMG, schedule: { mode: 'keep' } })).rejects.toThrow(/影片/);
+  });
+});
+
 describe('channel tabs', () => {
   it('splits one account’s posts into queue, approvals, sent and drafts', async () => {
     const { db, ws, fb, ig } = await setup();

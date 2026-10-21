@@ -34,6 +34,8 @@ export type ComposeInput = {
   firstComment?: string;
   /** The post's tags; omitted keeps the ones it has. */
   tagIds?: string[];
+  /** A Reel or story is Instagram only; omitted means a regular post. */
+  format?: PostFormat;
   schedule: Schedule;
   /** The zone a `same` schedule is read in; the person scheduling's own clock. */
   viewerTimeZone?: string;
@@ -54,7 +56,8 @@ const COMMENT_MAX = 2200;
 const PAST_GRACE_MS = 60_000;
 
 type Account = typeof connectedAccounts.$inferSelect;
-type Content = Pick<ComposeInput, 'body' | 'perAccount' | 'media' | 'firstComment'>;
+type Content = Pick<ComposeInput, 'body' | 'perAccount' | 'media' | 'firstComment' | 'format'>;
+export type PostFormat = 'post' | 'reel' | 'story';
 
 /** The first comment as stored: trimmed, null when empty. */
 function commentOf(c: Content) {
@@ -73,6 +76,16 @@ const textFor = (c: Content, accountId: string) => (c.perAccount?.[accountId] ??
 
 /** Check every account's text and the media against its platform's rules. */
 function checkContent(accounts: Account[], c: Content) {
+  const format = c.format ?? 'post';
+  const videos = c.media.filter((m) => m.type === 'video').length;
+  if (format !== 'post') {
+    if (accounts.some((a) => a.platform !== 'instagram')) throw new ComposeError('Reel 和限時動態只能發到 Instagram，請取消選取其他平台的帳號。');
+    if (format === 'reel' && (c.media.length !== 1 || videos !== 1)) throw new ComposeError('Reel 要剛好放一支影片。');
+    if (format === 'story' && c.media.length !== 1) throw new ComposeError('限時動態要剛好放一張圖片或一支影片。');
+  } else if (videos) {
+    // Regular posts go out as photos on every platform; video goes as an Instagram Reel.
+    throw new ComposeError('影片請改用 Reel 或限時動態格式，並只發到 Instagram。');
+  }
   for (const account of accounts) {
     if (account.status !== 'active') throw new ComposeError(`「${account.name}」的授權已失效，請先重新連結。`);
     const text = textFor(c, account.id);
@@ -139,7 +152,7 @@ export async function createPost(db: Db, input: ComposeInput) {
 
   const firstComment = commentOf(input);
   return db.transaction(async (tx) => {
-    const fields = { title: titleOf(input), body: input.body.trim(), firstComment };
+    const fields = { title: titleOf(input), body: input.body.trim(), firstComment, format: input.format ?? 'post' };
     const post = input.draftId
       ? await reopenDraft(tx, { ...input, postId: input.draftId }, fields)
       : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0];
@@ -182,7 +195,7 @@ const isManager = (role: Role) => role === 'owner' || role === 'admin';
  *   ComposeError: the post is not in the workspace, the caller is neither its author nor
  *     an owner or admin, or it already has publish tasks and so is no longer a draft.
  */
-async function reopenDraft(tx: Db, a: { workspaceId: string; postId: string; actor: string; role: Role }, fields: { title: string; body: string; firstComment: string | null }) {
+async function reopenDraft(tx: Db, a: { workspaceId: string; postId: string; actor: string; role: Role }, fields: { title: string; body: string; firstComment: string | null; format: PostFormat }) {
   const [post] = await tx.select().from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
   if (!post) throw new ComposeError('找不到這篇草稿，請重新整理後再試。');
   if (!isManager(a.role) && post.createdBy !== a.actor) throw new ComposeError('只有作者、擁有者或管理員可以修改這篇草稿。');
@@ -214,7 +227,7 @@ export async function saveDraft(db: Db, input: DraftInput) {
   if (accounts.length !== new Set(input.accountIds).size) throw new ComposeError('有帳號不屬於這個工作區，請重新整理後再試。');
   const firstComment = commentOf(input);
   return db.transaction(async (tx) => {
-    const fields = { title: titleOf(input), body: input.body.trim(), firstComment };
+    const fields = { title: titleOf(input), body: input.body.trim(), firstComment, format: input.format ?? 'post' };
     const post = input.postId
       ? await reopenDraft(tx, { ...input, postId: input.postId }, fields)
       : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0]!;
@@ -282,11 +295,12 @@ export async function updatePost(db: Db, input: UpdateInput) {
     if (tasks.length === 0) throw new ComposeError('這篇是草稿，請從草稿開啟後再儲存或排程。');
     if (tasks.some((t) => t.task.status !== 'scheduled')) throw new ComposeError('這篇貼文已經有帳號發出或正在發送，不能再修改。');
     const accounts = tasks.map((t) => t.account);
-    checkContent(accounts, input);
+    const format = input.format ?? row.post.format;
+    checkContent(accounts, { ...input, format });
     const runAts = input.schedule.mode === 'keep' ? null : runAtsFor(accounts, input.schedule, input.viewerTimeZone, now);
     const approved = manager || !row.workspace.requiresReview;
 
-    await tx.update(posts).set({ title: titleOf(input), body: input.body.trim(), firstComment: commentOf(input) }).where(eq(posts.id, row.post.id));
+    await tx.update(posts).set({ title: titleOf(input), body: input.body.trim(), firstComment: commentOf(input), format }).where(eq(posts.id, row.post.id));
     if (input.tagIds) await setPostTags(tx, { workspaceId: input.workspaceId, postId: row.post.id, tagIds: input.tagIds });
     for (const t of tasks) {
       await tx.update(postVariants).set({ body: textFor(input, t.account.id), media: input.media, reviewStatus: approved ? 'approved' : 'pending' }).where(eq(postVariants.id, t.variantId));

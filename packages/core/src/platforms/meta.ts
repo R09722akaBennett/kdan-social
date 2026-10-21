@@ -134,9 +134,9 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
   const g = graph(fetchFn, 'instagram');
 
   // A container must finish processing before it can be published; images usually are
-  // ready at once, carousels can take a few seconds.
-  async function waitReady(containerId: string, token: string) {
-    for (let i = 0; i < 6; i++) {
+  // ready at once, carousels can take a few seconds, videos up to a couple of minutes.
+  async function waitReady(containerId: string, token: string, tries = 6) {
+    for (let i = 0; i < tries; i++) {
       const res = await g.get(containerId, token, 'status_code');
       if (res.status_code === 'FINISHED') return;
       if (res.status_code === 'ERROR' || res.status_code === 'EXPIRED') {
@@ -151,6 +151,18 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
     platform: 'instagram',
     async publish(account, input) {
       const { externalId: igId, credentials: { pageAccessToken: token } } = account;
+      if (input.format === 'reel' || input.format === 'story') {
+        const m = input.media[0];
+        if (input.media.length !== 1 || !m) throw new PlatformError('instagram', 'invalid', `An Instagram ${input.format} takes exactly one media item`);
+        if (input.format === 'reel' && m.type !== 'video') throw new PlatformError('instagram', 'invalid', 'An Instagram Reel needs a video');
+        const source = m.type === 'video' ? { video_url: m.url } : { image_url: m.url };
+        // Stories carry no caption; a Reel's caption is the post text, and it also shows in the feed.
+        const fields = input.format === 'reel' ? { media_type: 'REELS', ...source, caption: input.body, share_to_feed: true } : { media_type: 'STORIES', ...source };
+        const containerId = String((await g.post(`${igId}/media`, token, fields, true)).id);
+        await waitReady(containerId, token, m.type === 'video' ? 12 : 6);
+        const res = await g.post(`${igId}/media_publish`, token, { creation_id: containerId }, false);
+        return { externalPostId: String(res.id) };
+      }
       if (input.media.length === 0) throw new PlatformError('instagram', 'invalid', 'Instagram posts need at least one image');
       if (input.media.length > 10) throw new PlatformError('instagram', 'invalid', 'Instagram carousels take at most 10 images');
 

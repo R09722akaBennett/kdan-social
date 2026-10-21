@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { auditLog, connectedAccounts, publishTasks, workspaces, type Db } from '../src/db/index';
+import { auditLog, connectedAccounts, posts, publishTasks, workspaces, type Db } from '../src/db/index';
 import { createClients } from '../src/index';
 import { dispatchDue, MAX_ATTEMPTS } from '../src/publish/dispatch';
 import { fakeFetch, KEY, seed, testDb } from './helpers';
@@ -162,6 +162,15 @@ describe('first comment', () => {
     expect(lines.at(-1)).toMatch(/first comment failed/);
     // A refused comment is not an expired account.
     expect((await db.select().from(connectedAccounts))[0]!.status).toBe('active');
+  });
+
+  it('leaves no comment on a story, which takes none', async () => {
+    const db = await testDb();
+    const { post } = await seed(db, { publishing: true, firstComment: '第一則' });
+    await db.update(posts).set({ format: 'story' }).where(eq(posts.id, post.id));
+    const f = fakeFetch().on('POST', /page-1\/feed$/, { body: { id: 'page-1_42' } });
+    await run(db, f);
+    expect(f.calls.some((c) => c.url.endsWith('/comments'))).toBe(false);
   });
 
   it('only says it would comment during a dry run', async () => {

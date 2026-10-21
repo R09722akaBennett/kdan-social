@@ -130,7 +130,8 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
     return finish('failed', { lastError: 'The account authorization has expired; reconnect the account' });
   }
   const client = opts.clients[account.platform] as PlatformClient<unknown>;
-  const comment = post.firstComment && client.comment ? post.firstComment : null;
+  // Stories take no comments.
+  const comment = post.firstComment && client.comment && post.format !== 'story' ? post.firstComment : null;
   if (!publishingAllowed(opts.globalEnabled, workspace)) {
     log(`[dry-run] Will publish ${where} with ${variant.media.length} media item(s)${comment ? ' and leave its first comment' : ''}`);
     return finish('dry_run');
@@ -154,7 +155,7 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
   try {
     res = await client.publish(
       { externalId: account.externalId, credentials },
-      { body: variant.body, media: variant.media, idempotencyKey: taskId },
+      { body: variant.body, media: variant.media, idempotencyKey: taskId, format: post.format },
     );
     log(`Published ${where} as ${res.externalPostId}`);
   } catch (e) {

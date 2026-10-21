@@ -17,6 +17,8 @@ import {
 export const platform = pgEnum('platform', ['facebook', 'instagram', 'line']);
 export const accountStatus = pgEnum('account_status', ['active', 'expired', 'revoked']);
 export const reviewStatus = pgEnum('review_status', ['draft', 'pending', 'approved', 'changes_requested']);
+// What kind of Instagram post this is; Facebook and LINE only take `post`.
+export const postFormat = pgEnum('post_format', ['post', 'reel', 'story']);
 export const taskStatus = pgEnum('task_status', [
   'scheduled',
   'running',
@@ -146,6 +148,7 @@ export const posts = pgTable('posts', {
   createdBy: text('created_by'),
   // Left under the post on Facebook and Instagram once it is out; LINE has no comments.
   firstComment: text('first_comment'),
+  format: postFormat('format').notNull().default('post'),
   createdAt: createdAt(),
 });
 
@@ -161,8 +164,11 @@ export const postComments = pgTable(
   (t) => [index('comments_post').on(t.postId, t.createdAt)],
 );
 
-/** `previewUrl` is a small copy for LINE, whose preview images must be under 1 MB. */
-export type MediaItem = { url: string; alt?: string; previewUrl?: string };
+/**
+ * `previewUrl` is a small JPEG: LINE's preview for an image, or a frame of a video for our
+ * own pages. Items without `type` are images, as every item was before videos.
+ */
+export type MediaItem = { url: string; alt?: string; previewUrl?: string; type?: 'image' | 'video' };
 
 export const postVariants = pgTable(
   'post_variants',

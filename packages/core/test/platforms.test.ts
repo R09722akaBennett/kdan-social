@@ -7,7 +7,7 @@ import { fakeFetch } from './helpers';
 const fbAccount = { externalId: 'page-1', credentials: { pageAccessToken: 'tok' } };
 const igAccount = { externalId: 'ig-1', credentials: { pageAccessToken: 'tok' } };
 const lineAccount = { externalId: 'line-1', credentials: { channelId: '2001', channelSecret: 'shh' } };
-const input = (media: { url: string; alt?: string }[] = []) => ({ body: 'hello', media, idempotencyKey: '7f3c1d2e-0000-4000-8000-000000000001' });
+const input = (media: { url: string; alt?: string; type?: 'image' | 'video' }[] = []) => ({ body: 'hello', media, idempotencyKey: '7f3c1d2e-0000-4000-8000-000000000001' });
 const noSleep = async () => {};
 
 async function rejects(p: Promise<unknown>): Promise<PlatformError> {
@@ -84,6 +84,30 @@ describe('instagram', () => {
     const parent = new URLSearchParams(f.calls[2]!.body);
     expect(parent.get('media_type')).toBe('CAROUSEL');
     expect(parent.get('children')).toBe('k1,k2');
+  });
+
+  it('publishes a Reel from one video with its caption, shared to the feed', async () => {
+    const f = fakeFetch()
+      .on('POST', /ig-1\/media$/, { body: { id: 'r1' } })
+      .on('GET', /\/r1\?/, { body: { status_code: 'IN_PROGRESS' } }, { body: { status_code: 'FINISHED' } })
+      .on('POST', /media_publish$/, { body: { id: 'ig-reel' } });
+    const res = await instagramClient(f.fn, noSleep).publish(igAccount, { ...input([{ url: 'https://cdn/a.mp4', type: 'video' }]), format: 'reel' });
+    expect(res.externalPostId).toBe('ig-reel');
+    const container = new URLSearchParams(f.calls[0]!.body);
+    expect([container.get('media_type'), container.get('video_url'), container.get('share_to_feed'), container.get('caption')]).toEqual(['REELS', 'https://cdn/a.mp4', 'true', input().body]);
+  });
+
+  it('publishes a story from one image without a caption, and refuses a Reel without video', async () => {
+    const f = fakeFetch()
+      .on('POST', /ig-1\/media$/, { body: { id: 's1' } })
+      .on('GET', /\/s1\?/, { body: { status_code: 'FINISHED' } })
+      .on('POST', /media_publish$/, { body: { id: 'ig-story' } });
+    await instagramClient(f.fn, noSleep).publish(igAccount, { ...input([{ url: 'https://cdn/a.jpg' }]), format: 'story' });
+    const container = new URLSearchParams(f.calls[0]!.body);
+    expect([container.get('media_type'), container.get('image_url'), container.get('caption')]).toEqual(['STORIES', 'https://cdn/a.jpg', null]);
+    const g = fakeFetch();
+    expect((await rejects(instagramClient(g.fn, noSleep).publish(igAccount, { ...input([{ url: 'https://cdn/a.jpg' }]), format: 'reel' }))).kind).toBe('invalid');
+    expect(g.calls).toHaveLength(0);
   });
 
   it('rejects a post without images before calling the API', async () => {

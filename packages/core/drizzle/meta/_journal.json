@@ -141,6 +141,13 @@
       "when": 1792575990822,
       "tag": "0019_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792577343235,
+      "tag": "0020_post_format",
+      "breakpoints": true
     }
   ]
 }
