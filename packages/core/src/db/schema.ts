@@ -253,6 +253,42 @@ export const notifications = pgTable(
   (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
 );
 
+// Blogs and news a workspace follows for things to post about, after Buffer's Feeds.
+export const feeds = pgTable(
+  'feeds',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    // The RSS or Atom address actually read, after following a page's feed link.
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    siteUrl: text('site_url'),
+    createdBy: text('created_by').notNull(),
+    lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+    // Why the last read failed; cleared by the next one that works.
+    lastError: text('last_error'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('feeds_workspace_url').on(t.workspaceId, t.url)],
+);
+
+export const feedItems = pgTable(
+  'feed_items',
+  {
+    id: id(),
+    feedId: uuid('feed_id').notNull().references(() => feeds.id, { onDelete: 'cascade' }),
+    // The entry's guid or id, else its link, so a re-read finds the same row.
+    key: text('key').notNull(),
+    title: text('title').notNull(),
+    link: text('link'),
+    summary: text('summary').notNull().default(''),
+    imageUrl: text('image_url'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('feed_items_feed_key').on(t.feedId, t.key), index('feed_items_recent').on(t.feedId, t.publishedAt)],
+);
+
 export const inboxStatus = pgEnum('inbox_status', ['open', 'done']);
 
 // Comments people left under an account's Facebook and Instagram posts, after Buffer's

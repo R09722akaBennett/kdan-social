@@ -23,6 +23,7 @@ export * from './ideas';
 export * from './tags';
 export * from './goals';
 export * from './inbox';
+export * from './feeds';
 export * from './time';
 export * from './overview';
 export * from './groups';
