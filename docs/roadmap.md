@@ -29,7 +29,7 @@
 - [x] Token 失效偵測（發文與每日快照時）與重新連結（重新授權即更新 token）
 - [ ] 發文編輯器：FB 粉專（文字、圖片）→ IG（圖片、輪播）、圖片上傳、依各帳號時區排程
 - [ ] 每日粉絲數快照
-- [x] 登入（Email 連結）與工作區；新工作區目前用 `workspace:bootstrap` 腳本建立
+- [x] 登入（Facebook）與工作區；新工作區用 `SIGNUP_CODES` 邀請碼自助建立
 - [x] 帳號群組與帳號時區的設定畫面
 - [x] 成員邀請的畫面（目前不寄信，邀請後把登入連結給對方）
 - [x] 部署到 Vercel（https://kdan-social.vercel.app，Supabase Cron 每分鐘觸發派送）

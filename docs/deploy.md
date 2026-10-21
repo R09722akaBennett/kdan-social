@@ -69,13 +69,17 @@ values ('media', 'media', true, 8388608, array['image/jpeg']);
 ## 登入與 Meta 授權
 
 - **Supabase Auth**：Site URL 設正式網址；Redirect URLs 加 `<正式網址>/auth/callback`
-  與 `http://localhost:3000/auth/callback`。登入用 Email 連結，免費方案每小時能寄的信很少，
-  內部使用足夠。
-- **新成員**：登入一次後還不屬於任何工作區，要由管理員加入（目前用資料庫腳本）。
+  與 `http://localhost:3000/auth/callback`。登入只用 Facebook，Email provider 關閉：Providers 的
+  Facebook 填**登入專用**的 Meta app（消費者類型，只要 `email` 與 `public_profile`）的 App ID 與
+  Secret。發文用的 app 是商業類型，Facebook 不讓它只要 `email` 登入（會顯示「This app needs at least
+  one supported permission」），所以兩個 app 分開。
+- **新成員**：用 Facebook 登入後，若有工作區用他 Facebook 帳號的 Email 邀請過他，就會自動加入；
+  沒有的話可以用 `SIGNUP_CODES` 的邀請碼自己建立工作區。
 - **Meta app**：兩個用途「Manage everything on your Page」與「Manage messaging & content on
   Instagram（API setup with Facebook Login）」，權限要包含 `META_SCOPES`
   （`packages/core/src/platforms/meta-oauth.ts`）列出的每一項；Facebook Login for Business 的
-  Valid OAuth Redirect URIs 填 `<正式網址>/api/meta/callback`。app 在開發模式時，只有在 app
+  Valid OAuth Redirect URIs 填 `<正式網址>/api/meta/callback`。登入專用 app 的 Valid OAuth Redirect
+  URIs 填 Supabase 的 `https://<project ref>.supabase.co/auth/v1/callback`。app 在開發模式時，只有在 app
   有角色的人能授權。
 
 ## 3. Supabase Cron 每分鐘呼叫派送
