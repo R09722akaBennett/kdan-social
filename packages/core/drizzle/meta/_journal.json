@@ -127,6 +127,13 @@
       "when": 1792573417234,
       "tag": "0017_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792574446054,
+      "tag": "0018_posting_goal",
+      "breakpoints": true
     }
   ]
 }

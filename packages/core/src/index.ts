@@ -21,6 +21,7 @@ export * from './posts';
 export * from './channel';
 export * from './ideas';
 export * from './tags';
+export * from './goals';
 export * from './time';
 export * from './overview';
 export * from './groups';

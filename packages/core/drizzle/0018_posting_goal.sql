@@ -1,0 +1,1 @@
+ALTER TABLE "connected_accounts" ADD COLUMN "posting_goal" integer;

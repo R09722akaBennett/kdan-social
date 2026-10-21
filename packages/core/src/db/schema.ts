@@ -128,6 +128,8 @@ export const connectedAccounts = pgTable(
     status: accountStatus('status').notNull().default('active'),
     statusDetail: text('status_detail'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    // Posts a week the team aims for, after Buffer's posting goal; null until one is set.
+    postingGoal: integer('posting_goal'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('accounts_workspace_platform_external').on(t.workspaceId, t.platform, t.externalId)],
