@@ -18,6 +18,20 @@ export async function createImageUpload() {
   return { path: data.path, token: data.token, publicUrl: storage.getPublicUrl(path).data.publicUrl };
 }
 
+/**
+ * A one-time URL the browser uploads one video to, for an Instagram Reel or story. The
+ * bucket must accept video/mp4 and video/quicktime (docs/deploy.md).
+ */
+export async function createVideoUpload(ext: 'mp4' | 'mov') {
+  const { workspace } = await requireWorkspace();
+  if (ext !== 'mp4' && ext !== 'mov') throw new Error(`Unsupported video extension: ${String(ext)}`);
+  const path = `${workspace.id}/${randomUUID()}.${ext}`;
+  const storage = supabaseAdmin().storage.from('media');
+  const { data, error } = await storage.createSignedUploadUrl(path);
+  if (error || !data) throw new Error(`Could not sign an upload URL: ${error?.message ?? 'no data'}`);
+  return { path: data.path, token: data.token, publicUrl: storage.getPublicUrl(path).data.publicUrl };
+}
+
 export type SubmitState = { error?: string };
 
 export async function submitPost(_prev: SubmitState, formData: FormData): Promise<SubmitState> {
@@ -30,9 +44,10 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
     body: string;
     perAccount?: Record<string, string>;
     accountIds: string[];
-    media: Array<{ url: string; previewUrl?: string; alt?: string }>;
+    media: Array<{ url: string; previewUrl?: string; alt?: string; type?: 'image' | 'video' }>;
     firstComment?: string;
     tagIds?: string[];
+    format?: 'post' | 'reel' | 'story';
     /** Open a fresh composer afterwards instead of the list. */
     createAnother?: boolean;
     schedule: Schedule | { mode: 'keep' };
@@ -60,21 +75,23 @@ export async function submitPost(_prev: SubmitState, formData: FormData): Promis
   if (asDraft && payload.postId) return { error: '已排程的貼文不能存成草稿。' };
   if (payload.media.some((m) => ![m.url, m.previewUrl ?? m.url].every((u) => u.startsWith(prefix) || kept.has(u)))) return { error: '圖片來源不正確，請重新上傳。' };
   try {
-    const { postId, draftId, body, perAccount, accountIds, media, firstComment, tagIds, createAnother, schedule, viewerTimeZone } = payload;
+    const { postId, draftId, body, perAccount, accountIds, firstComment, tagIds, format, createAnother, schedule, viewerTimeZone } = payload;
+    // The type comes from the file name we signed, not from what the browser says it is.
+    const media = payload.media.map(({ type: _claimed, ...m }) => ({ ...m, type: /\.(mp4|mov)$/i.test(m.url) ? 'video' as const : 'image' as const }));
     const who = { workspaceId: workspace.id, actor: user.email, role };
     if (asDraft) {
-      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media, firstComment, tagIds });
+      await saveDraft(getDb(), { ...who, postId: draftId, body, perAccount, accountIds, media, firstComment, tagIds, format });
       revalidatePath('/app', 'layout');
       target = createAnother ? `/app/posts/new?another=1&notice=${encodeURIComponent('已存成草稿，接著寫下一篇')}`
         : `/app/channels/${accountIds[0]}?tab=drafts&notice=${encodeURIComponent('已存成草稿')}`;
     } else if (postId) {
-      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, firstComment, tagIds, schedule, viewerTimeZone });
+      const { approved } = await updatePost(getDb(), { ...who, postId, body, perAccount, media, firstComment, tagIds, format, schedule, viewerTimeZone });
       revalidatePath('/app', 'layout');
       // `redirect` throws, so it must stay outside this try; remember where to go.
       target = `/app/approvals?post=${postId}&notice=${encodeURIComponent(approved ? '已儲存，貼文會照排定時間發出' : '已重新送審')}`;
     } else {
       if (schedule.mode === 'keep') return { error: '新貼文要選擇發布時間。' };
-      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, firstComment, tagIds, schedule, viewerTimeZone, draftId });
+      await createPost(getDb(), { ...who, body, perAccount, accountIds, media, firstComment, tagIds, format, schedule, viewerTimeZone, draftId });
       if (createAnother) target = `/app/posts/new?another=1&notice=${encodeURIComponent(role === 'owner' || role === 'admin' ? '已排程，接著寫下一篇' : '已送出審核，接著寫下一篇')}`;
     }
   } catch (e) {

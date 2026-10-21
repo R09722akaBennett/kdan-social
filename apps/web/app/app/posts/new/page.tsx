@@ -44,6 +44,7 @@ export default async function NewPost({ searchParams }: { searchParams: Promise<
           custom: Object.fromEntries(draft.versions.filter((v) => v.body !== (draft.post.body ?? '')).map((v) => [v.accountId, v.body])),
           media: draft.versions[0]?.media ?? [],
           firstComment: draft.post.firstComment ?? '',
+          format: draft.post.format,
           tagIds: draftTags?.get(draft.post.id)?.map((t) => t.id) ?? [],
         }}
         tags={tags.map(({ id, name, color }) => ({ id, name, color }))}

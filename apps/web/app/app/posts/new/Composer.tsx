@@ -5,18 +5,21 @@ import { useActionState, useEffect, useMemo, useState, type CSSProperties } from
 import { clockInZone, dayInZone, zonedTimeToUtc } from '@kdan-social/core/time';
 import { bannedHits } from '@kdan-social/core/voice-rules';
 import { Icon, Pf, PLATFORM, zoneName, type Platform } from '@/components/ui';
-import { aiAdaptAction, aiRewriteAction, createImageUpload, createTagAction, submitPost, type AiResult, type SubmitState } from '../actions';
+import { aiAdaptAction, aiRewriteAction, createImageUpload, createTagAction, createVideoUpload, submitPost, type AiResult, type SubmitState } from '../actions';
 import { TagPicker, type TagView } from '@/components/tags';
 
 type Group = { id: string; name: string };
 type Account = { id: string; groupId: string | null; timeZone: string; platform: Platform; name: string; status: string };
 type LineUsage = { accountId: string; quota: { limit: number | null; used: number } | null; audience: { followers: number; targetedReaches: number } | null; error: string | null };
-type Media = { url: string; previewUrl: string; alt: string; ratio: number; name: string };
+type Media = { url: string; previewUrl: string; alt: string; ratio: number; name: string; type: 'image' | 'video' };
+type Format = 'post' | 'reel' | 'story';
 type Tone = 'ok' | 'err' | 'warn' | 'info';
 
 const IG_MAX = 2200;
 const LINE_MAX = 5000;
 const LINE_IMAGES = 4;
+// Supabase's free plan caps one stored file at 50 MB, below Instagram's own limits.
+const VIDEO_MAX = 50 * 1024 * 1024;
 // Instagram rejects feed images narrower than 4:5 or wider than 1.91:1.
 const IG_RATIO = [0.8, 1.91] as const;
 const MAX_WIDTH = 1440;
@@ -42,6 +45,28 @@ async function toJpeg(file: File, maxWidth = MAX_WIDTH, quality = 0.9): Promise<
   return { blob, ratio: bitmap.width / bitmap.height };
 }
 
+/** The first frame of a video as a JPEG, for previews; Instagram itself takes the video. */
+async function videoFrame(file: File): Promise<{ blob: Blob; ratio: number }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.preload = 'auto';
+    video.src = url;
+    await new Promise<void>((ok, fail) => { video.onloadeddata = () => ok(); video.onerror = () => fail(new Error('unreadable video')); });
+    const scale = Math.min(1, PREVIEW_WIDTH / video.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d')!.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.8));
+    if (!blob) throw new Error('encode failed');
+    return { blob, ratio: video.videoWidth / video.videoHeight };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 const todayIn = (tz: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 /** An existing post being changed: its accounts are fixed, everything else starts from what it has. */
@@ -50,9 +75,10 @@ export type EditPost = {
   accountIds: string[];
   main: string;
   custom: Record<string, string>;
-  media: Array<{ url: string; previewUrl?: string; alt?: string }>;
+  media: Array<{ url: string; previewUrl?: string; alt?: string; type?: 'image' | 'video' }>;
   firstComment?: string;
   tagIds?: string[];
+  format?: Format;
   /** Review comments, newest last, shown above the editor as Later shows a post's activity. */
   notes: Array<{ author: string; body: string; at: string }>;
   /** The current times, in words, for the "keep" option. */
@@ -61,7 +87,7 @@ export type EditPost = {
 
 /** A post proposed elsewhere (the AI assistant's plan), to start a new post from. */
 /** A saved draft being opened again; it can still change accounts and be scheduled. */
-export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media' | 'firstComment' | 'tagIds'>;
+export type DraftPost = Pick<EditPost, 'postId' | 'accountIds' | 'main' | 'custom' | 'media' | 'firstComment' | 'tagIds' | 'format'>;
 
 export type StartPost = { accountIds: string[]; main: string; date?: string; time?: string };
 
@@ -88,11 +114,12 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const [firstComment, setFirstComment] = useState(seed?.firstComment ?? '');
   const [createAnother, setCreateAnother] = useState(!!another);
   const [tagIds, setTagIds] = useState<string[]>(seed?.tagIds ?? []);
+  const [chosenFormat, setFormat] = useState<Format>(seed?.format ?? 'post');
   // Text customised for one account; an account without an entry uses the main text.
   const [custom, setCustom] = useState<Record<string, string>>(seed?.custom ?? {});
   const [customizing, setCustomizing] = useState(Object.keys(seed?.custom ?? {}).length > 0);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [media, setMedia] = useState<Media[]>(() => (seed?.media ?? []).map((m, i) => ({ url: m.url, previewUrl: m.previewUrl ?? m.url, alt: m.alt ?? '', ratio: 1, name: `圖片 ${i + 1}` })));
+  const [media, setMedia] = useState<Media[]>(() => (seed?.media ?? []).map((m, i) => ({ url: m.url, previewUrl: m.previewUrl ?? m.url, alt: m.alt ?? '', ratio: 1, name: `${m.type === 'video' ? '影片' : '圖片'} ${i + 1}`, type: m.type ?? 'image' })));
   // Stored media keep no dimensions; measure them so the Instagram ratio check is real.
   useEffect(() => {
     for (const m of seed?.media ?? []) {
@@ -112,7 +139,10 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   // An edited post keeps its accounts, so only those are offered.
   const offered = edit ? accounts.filter((a) => edit.accountIds.includes(a.id)) : accounts;
   const chosen = offered.filter((a) => on[a.id]);
-  const commentable = chosen.filter((a) => a.platform !== 'line');
+  // After Buffer's Post / Reel / Story choice, offered only while every chosen account is Instagram.
+  const igOnly = chosen.length > 0 && chosen.every((a) => a.platform === 'instagram');
+  const format: Format = igOnly ? chosenFormat : 'post';
+  const commentable = format === 'story' ? [] : chosen.filter((a) => a.platform !== 'line');
   // Same rule as createPost on the server, so the preview shows exactly what is sent.
   const textFor = (id: string) => (custom[id] ?? main).trim();
   const groupState = (g: Group) => {
@@ -127,14 +157,20 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
   const usedGroups = groups.filter((g) => accounts.some((a) => a.groupId === g.id));
 
   const checks: Array<{ tone: Tone; title: string; detail: string; href?: string; action?: string }> = [];
+  const videos = media.filter((m) => m.type === 'video').length;
+  if (format === 'reel' && (media.length !== 1 || videos !== 1)) checks.push({ tone: 'err', title: 'Reel 要剛好一支影片', detail: `目前有 ${media.length} 個媒體、${videos} 支影片。` });
+  if (format === 'story' && media.length !== 1) checks.push({ tone: 'err', title: '限時動態要剛好一個媒體', detail: '一張圖片或一支影片。' });
+  if (format === 'story' && main.trim()) checks.push({ tone: 'warn', title: '限時動態不會顯示內文', detail: 'Instagram 的限時動態沒有說明文字，內文只會留在 kdan-social 裡。' });
+  if (format === 'post' && videos) checks.push({ tone: 'err', title: '一般貼文不能放影片', detail: '只選 Instagram 帳號時，把格式換成 Reel 或限時動態。' });
   for (const a of chosen) {
     const text = textFor(a.id);
     const who = `${PLATFORM[a.platform].name}「${a.name}」`;
     if (a.status !== 'active') checks.push({ tone: 'err', title: `${who}：授權已失效`, detail: '要先重新連結帳號才能排程。', href: '/app/channels', action: '重新連結' });
     if (a.platform === 'instagram') {
-      if (media.length === 0) checks.push({ tone: 'err', title: `${who}：缺少圖片`, detail: 'Instagram 一定要附至少一張圖片。' });
+      if (format === 'post' && media.length === 0) checks.push({ tone: 'err', title: `${who}：缺少圖片`, detail: 'Instagram 一定要附至少一張圖片。' });
       if (text.length > IG_MAX) checks.push({ tone: 'err', title: `${who}：內文太長`, detail: `最多 ${IG_MAX} 字，目前 ${text.length} 字。` });
-      const bad = media.filter((x) => x.ratio < IG_RATIO[0] || x.ratio > IG_RATIO[1]);
+      // Reels and stories are vertical; the 4:5 to 1.91:1 rule is the feed's.
+      const bad = format === 'post' ? media.filter((x) => x.ratio < IG_RATIO[0] || x.ratio > IG_RATIO[1]) : [];
       if (bad.length) checks.push({ tone: 'err', title: `${who}：圖片比例不符`, detail: `只接受寬高比 4:5 到 1.91:1，「${bad.map((x) => x.name).join('、')}」超出範圍。` });
     }
     if (a.platform === 'facebook' && !text && media.length === 0) checks.push({ tone: 'err', title: `${who}：沒有內容`, detail: '要有文字或圖片。' });
@@ -164,7 +200,21 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
     const client = createBrowserClient(supabase.url, supabase.key);
     for (const file of Array.from(files)) {
       setUploading((n) => n + 1);
+      const video = file.type.startsWith('video/');
       try {
+        if (video) {
+          // Sent as is: Instagram transcodes Reels itself. Only MP4 and MOV are signed.
+          if (file.size > VIDEO_MAX) throw new Error('too large');
+          const ext = file.type === 'video/quicktime' ? 'mov' : 'mp4';
+          const { blob: frame, ratio } = await videoFrame(file);
+          const [target, previewTarget] = await Promise.all([createVideoUpload(ext), createImageUpload()]);
+          const { error } = await client.storage.from('media').uploadToSignedUrl(target.path, target.token, file, { contentType: file.type });
+          if (error) throw error;
+          const { error: previewError } = await client.storage.from('media').uploadToSignedUrl(previewTarget.path, previewTarget.token, frame, { contentType: 'image/jpeg' });
+          if (previewError) throw previewError;
+          setMedia((m) => [...m, { url: target.publicUrl, previewUrl: previewTarget.publicUrl, alt: '', ratio, name: file.name, type: 'video' }]);
+          continue;
+        }
         const { blob, ratio } = await toJpeg(file);
         if (blob.size > 8 * 1024 * 1024) throw new Error('too large');
         const { blob: preview } = await toJpeg(file, PREVIEW_WIDTH, 0.8);
@@ -175,10 +225,10 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
         if (error) throw error;
         const { error: previewError } = await client.storage.from('media').uploadToSignedUrl(previewTarget.path, previewTarget.token, preview, { contentType: 'image/jpeg' });
         if (previewError) throw previewError;
-        setMedia((m) => [...m, { url: target.publicUrl, previewUrl: previewTarget.publicUrl, alt: '', ratio, name: file.name }]);
+        setMedia((m) => [...m, { url: target.publicUrl, previewUrl: previewTarget.publicUrl, alt: '', ratio, name: file.name, type: 'image' }]);
       } catch (e) {
         console.error(`Upload of ${file.name} failed`, e);
-        setUploadError(`「${file.name}」上傳失敗。支援 JPEG、PNG、WebP，轉檔後要小於 8 MB。`);
+        setUploadError(video ? `「${file.name}」上傳失敗。影片支援 MP4、MOV，最大 50 MB。` : `「${file.name}」上傳失敗。支援 JPEG、PNG、WebP，轉檔後要小於 8 MB。`);
       } finally {
         setUploading((n) => n - 1);
       }
@@ -217,6 +267,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
     media: media.map(({ url, previewUrl, alt }) => ({ url, previewUrl, ...(alt ? { alt } : {}) })),
     firstComment: commentable.length ? firstComment : '',
     tagIds,
+    format,
     createAnother: !edit && createAnother,
     schedule: mode === 'now' || mode === 'keep' ? { mode } : { mode, date, time },
     viewerTimeZone: viewerTz,
@@ -300,6 +351,17 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
             </div>
           </div>
 
+          {igOnly && (
+            <div className="row" style={{ gap: 10 }}>
+              <span className="small" style={{ fontWeight: 600 }}>Instagram 格式</span>
+              <div className="seg" role="radiogroup" aria-label="Instagram 格式">
+                {([['post', '貼文'], ['reel', 'Reel'], ['story', '限時動態']] as const).map(([k, l]) => (
+                  <button key={k} type="button" role="radio" aria-checked={format === k} onClick={() => setFormat(k)}>{l}</button>
+                ))}
+              </div>
+              {format !== 'post' && <span className="tiny muted">{format === 'reel' ? '一支影片（MP4 或 MOV，50 MB 以內），內文是說明文字。' : '一張圖片或一支影片，不顯示內文。'}</span>}
+            </div>
+          )}
           <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
             <div className="row" style={{ padding: '14px 16px 0' }}>
               <span style={{ fontWeight: 600 }}>主要文字</span>
@@ -313,13 +375,16 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
               {media.map((m, i) => (
                 <div key={m.url} className="stack" style={{ width: 80, gap: 4 }}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- user uploads on our own storage domain */}
-                  <img src={m.previewUrl} alt={m.alt || m.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }} />
+                  <span style={{ position: 'relative', display: 'block' }}>
+                    <img src={m.previewUrl} alt={m.alt || m.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                    {m.type === 'video' && <span className="ig-cell-when" style={{ left: 4, bottom: 4 }}>影片</span>}
+                  </span>
                   <button type="button" className="tiny" onClick={() => setMedia((all) => all.filter((x) => x !== m))} style={{ border: 0, background: 'none', color: 'var(--accent)', padding: 0 }} aria-label={`移除第 ${i + 1} 張圖`}>移除</button>
                 </div>
               ))}
               <label style={{ width: 80, height: 80, borderRadius: 8, border: '1px dashed #B8BEC7', background: '#FAFBFC', fontSize: 12, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 {uploading ? `上傳中…` : '加入媒體'}
-                <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
+                <input type="file" accept={format === 'post' ? 'image/jpeg,image/png,image/webp' : 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime'} multiple hidden onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
               </label>
               {media.length > 0 && (
                 <div className="stack" style={{ gap: 4, flex: '1 1 200px' }}>
@@ -335,7 +400,7 @@ export default function Composer({ workspace, role, groups, accounts, supabase, 
               <div className="row" style={{ padding: '10px 16px', borderTop: '1px solid var(--line-soft)', gap: 10, flexWrap: 'nowrap', alignItems: 'flex-start' }}>
                 <label htmlFor="first-comment" className="small" style={{ fontWeight: 600, width: 84, flex: 'none', paddingTop: 7 }}>第一則留言</label>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <input id="first-comment" className="input" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} placeholder="發出後留在貼文底下，例如連結或 hashtag（選填）" style={{ minHeight: 34 }} />
+                  <input id="first-comment" className="input" value={firstComment} onChange={(e) => setFirstComment(e.target.value)} placeholder="發出後留在貼文底下，例如連結或 hashtag（選填）" style={{ minHeight: 34, width: '100%' }} />
                   {firstComment.trim() && commentable.length < chosen.length && <div className="tiny muted" style={{ marginTop: 4 }}>LINE 沒有留言功能，只會留在 Facebook 與 Instagram。</div>}
                 </div>
               </div>

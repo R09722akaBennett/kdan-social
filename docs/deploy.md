@@ -53,18 +53,31 @@
 
 3. Function 區域設成和 Supabase 同區（目前是 `sin1`）。
 
-## 圖片儲存
+## 圖片與影片儲存
 
-Supabase Storage 的 `media` bucket：公開讀取（Instagram 從公開網址抓圖），單檔上限 8 MB，
-只收 `image/jpeg`（Instagram 只接受 JPEG，瀏覽器上傳前會先轉檔）。
+Supabase Storage 的 `media` bucket：公開讀取（Instagram 從公開網址抓檔），單檔上限 50 MB，收
+`image/jpeg`、`video/mp4`、`video/quicktime`。圖片一律是 JPEG（Instagram 只接受 JPEG，瀏覽器上傳前會先
+轉檔）；影片只給 Instagram 的 Reel 與限時動態用，原檔上傳，由 Instagram 自己轉檔。
 
 ```sql
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('media', 'media', true, 8388608, array['image/jpeg']);
+values ('media', 'media', true, 52428800, array['image/jpeg', 'video/mp4', 'video/quicktime']);
 ```
 
-上傳流程：伺服器用 secret key 簽一次性的上傳網址（路徑 `<workspace id>/<uuid>.jpg`），瀏覽器直接
-傳到 Storage，不經過 Vercel（函式有請求大小上限）。沒有簽名的上傳、重用過的網址、非 JPEG 都會被拒絕。
+已經建好、只收 JPEG 的 bucket，改成收影片：
+
+```sql
+update storage.buckets
+set file_size_limit = 52428800, allowed_mime_types = array['image/jpeg', 'video/mp4', 'video/quicktime']
+where id = 'media';
+```
+
+50 MB 是 Supabase 免費方案的單檔上限（Settings → Storage 的 Upload file size limit 也要至少 50 MB）；
+升級方案後可以再調高，Instagram 本身收得更大。
+
+上傳流程：伺服器用 secret key 簽一次性的上傳網址（路徑 `<workspace id>/<uuid>.jpg`，影片是 `.mp4` 或
+`.mov`），瀏覽器直接傳到 Storage，不經過 Vercel（函式有請求大小上限）。沒有簽名的上傳、重用過的網址、
+不在清單上的檔案類型都會被拒絕。伺服器依副檔名判斷是圖片還是影片，不採用瀏覽器說的類型。
 
 ## 登入與 Meta 授權
 

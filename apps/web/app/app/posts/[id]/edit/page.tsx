@@ -56,6 +56,7 @@ export default async function EditPost({ params }: { params: Promise<{ id: strin
         custom: Object.fromEntries(d.versions.filter((v) => v.body !== main).map((v) => [v.accountId, v.body])),
         media: d.versions[0]?.media ?? [],
         firstComment: d.post.firstComment ?? '',
+        format: d.post.format,
         tagIds: postTags.get(d.post.id)?.map((t) => t.id) ?? [],
         notes: d.comments.map((c) => ({ author: c.author, body: c.body, at: formatInZone(c.createdAt, workspace.timeZone) })),
         when,
