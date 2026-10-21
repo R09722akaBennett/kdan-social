@@ -47,7 +47,7 @@ export function fakeFetch() {
 }
 
 /** One workspace with a Facebook page on Taipei time, and a post scheduled for it. */
-export async function seed(db: Db, opts: { publishing?: boolean; review?: 'approved' | 'pending'; accountStatus?: 'active' | 'expired'; runAt?: Date; media?: { url: string; alt?: string }[] } = {}) {
+export async function seed(db: Db, opts: { publishing?: boolean; review?: 'approved' | 'pending'; accountStatus?: 'active' | 'expired'; runAt?: Date; media?: { url: string; alt?: string }[]; firstComment?: string } = {}) {
   const [ws] = await db.insert(schema.workspaces).values({ name: 'KDAN Mobile', publishingEnabled: opts.publishing ?? false }).returning();
   const ref = { workspaceId: ws!.id, platform: 'facebook' as const, externalId: 'page-1' };
   const [account] = await db.insert(schema.connectedAccounts).values({
@@ -57,7 +57,7 @@ export async function seed(db: Db, opts: { publishing?: boolean; review?: 'appro
     credentials: encrypt(JSON.stringify({ pageAccessToken: 'secret-page-token' }), KEY, accountContext(ref)),
     status: opts.accountStatus ?? 'active',
   }).returning();
-  const [post] = await db.insert(schema.posts).values({ workspaceId: ws!.id, title: '雙十一預告' }).returning();
+  const [post] = await db.insert(schema.posts).values({ workspaceId: ws!.id, title: '雙十一預告', firstComment: opts.firstComment ?? null }).returning();
   const [variant] = await db.insert(schema.postVariants).values({
     postId: post!.id, accountId: account!.id, platform: 'facebook', body: 'PDF Reader 全方案 5 折', media: opts.media ?? [], reviewStatus: opts.review ?? 'approved',
   }).returning();

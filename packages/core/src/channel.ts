@@ -47,6 +47,8 @@ export type ChannelItem = {
   review: (typeof postVariants.$inferSelect)['reviewStatus'];
   lastError: string | null;
   externalPostId: string | null;
+  /** Why the first comment did not go up, when the post did. */
+  commentError: string | null;
 };
 
 /**
@@ -58,7 +60,7 @@ export async function channelItems(db: Db, a: { workspaceId: string; accountId: 
     const drafts = await listDrafts(db, a);
     return drafts.map(({ post, versions }) => {
       const v = versions.find((x) => x.accountId === a.accountId)!;
-      return { postId: post.id, title: post.title, body: v.body, media: v.media, createdBy: post.createdBy, runAt: null, status: 'draft', review: 'draft', lastError: null, externalPostId: null };
+      return { postId: post.id, title: post.title, body: v.body, media: v.media, createdBy: post.createdBy, runAt: null, status: 'draft', review: 'draft', lastError: null, externalPostId: null, commentError: null };
     });
   }
   const sent = a.tab === 'sent';
@@ -66,6 +68,7 @@ export async function channelItems(db: Db, a: { workspaceId: string; accountId: 
     .select({
       postId: posts.id, title: posts.title, body: postVariants.body, media: postVariants.media, createdBy: posts.createdBy,
       runAt: publishTasks.runAt, status: publishTasks.status, review: postVariants.reviewStatus, lastError: publishTasks.lastError, externalPostId: publishTasks.externalPostId,
+      commentError: publishTasks.commentError,
     })
     .from(publishTasks)
     .innerJoin(postVariants, eq(postVariants.id, publishTasks.variantId))

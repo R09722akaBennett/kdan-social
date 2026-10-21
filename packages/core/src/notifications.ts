@@ -5,6 +5,7 @@ export type NotificationKind =
   | 'publish.failed'
   | 'publish.needs_check'
   | 'publish.missed'
+  | 'publish.comment_failed'
   | 'account.expired'
   | 'review.requested'
   | 'review.approved'

@@ -78,6 +78,11 @@ export function facebookClient(fetchFn: FetchFn = fetch): PlatformClient<Faceboo
       const res = await g.post(`${pageId}/feed`, token, { message: input.body, ...attached }, false);
       return { externalPostId: String(res.id) };
     },
+    // Needs pages_manage_engagement; without it Graph answers with a permission error.
+    async comment(account, postId, text) {
+      const res = await g.post(`${postId}/comments`, account.credentials.pageAccessToken, { message: text }, false);
+      return { externalCommentId: String(res.id) };
+    },
     async followers(account) {
       const res = await g.get(account.externalId, account.credentials.pageAccessToken, 'followers_count');
       return typeof res.followers_count === 'number' ? res.followers_count : null;
@@ -150,6 +155,11 @@ export function instagramClient(fetchFn: FetchFn = fetch, sleep: Sleep = realSle
       await waitReady(containerId, token);
       const res = await g.post(`${igId}/media_publish`, token, { creation_id: containerId }, false);
       return { externalPostId: String(res.id) };
+    },
+    // Needs instagram_manage_comments.
+    async comment(account, mediaId, text) {
+      const res = await g.post(`${mediaId}/comments`, account.credentials.pageAccessToken, { message: text }, false);
+      return { externalCommentId: String(res.id) };
     },
     async followers(account) {
       const res = await g.get(account.externalId, account.credentials.pageAccessToken, 'followers_count');

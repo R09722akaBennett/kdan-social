@@ -29,6 +29,8 @@ export type ComposeInput = {
   perAccount?: Record<string, string>;
   accountIds: string[];
   media: MediaItem[];
+  /** Left under the post once it is out on Facebook and Instagram; LINE accounts ignore it. */
+  firstComment?: string;
   schedule: Schedule;
   /** The zone a `same` schedule is read in; the person scheduling's own clock. */
   viewerTimeZone?: string;
@@ -42,11 +44,21 @@ const LINE_TEXT_MAX = 5000;
 // One broadcast carries at most five message objects: the text plus four images.
 const LINE_IMAGES_MAX = 4;
 const MEDIA_MAX = 10;
+// Instagram's caption limit, applied to comments too; the platform's own error is recorded
+// on the task if it is stricter.
+const COMMENT_MAX = 2200;
 // A post scheduled a moment ago is still "now"; anything older was a mistake.
 const PAST_GRACE_MS = 60_000;
 
 type Account = typeof connectedAccounts.$inferSelect;
-type Content = Pick<ComposeInput, 'body' | 'perAccount' | 'media'>;
+type Content = Pick<ComposeInput, 'body' | 'perAccount' | 'media' | 'firstComment'>;
+
+/** The first comment as stored: trimmed, null when empty. */
+function commentOf(c: Content) {
+  const text = c.firstComment?.trim() ?? '';
+  if (text.length > COMMENT_MAX) throw new ComposeError(`第一則留言最多 ${COMMENT_MAX} 字，目前 ${text.length} 字。`);
+  return text || null;
+}
 
 function checkMedia(media: MediaItem[]) {
   if (media.length > MEDIA_MAX) throw new ComposeError(`圖片最多 ${MEDIA_MAX} 張。`);
@@ -122,8 +134,9 @@ export async function createPost(db: Db, input: ComposeInput) {
   const runAts = runAtsFor(accounts, input.schedule, input.viewerTimeZone, now);
   const approved = input.role === 'owner' || input.role === 'admin' || !rows[0]!.workspace.requiresReview;
 
+  const firstComment = commentOf(input);
   return db.transaction(async (tx) => {
-    const fields = { title: titleOf(input), body: input.body.trim() };
+    const fields = { title: titleOf(input), body: input.body.trim(), firstComment };
     const post = input.draftId
       ? await reopenDraft(tx, { ...input, postId: input.draftId }, fields)
       : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0];
@@ -159,13 +172,13 @@ const isManager = (role: Role) => role === 'owner' || role === 'admin';
 
 /**
  * Open a draft for change: its accounts' versions are dropped so the caller writes them
- * again, and its title and main text take `fields`.
+ * again, and its title, main text and first comment take `fields`.
  *
  * Raises:
  *   ComposeError: the post is not in the workspace, the caller is neither its author nor
  *     an owner or admin, or it already has publish tasks and so is no longer a draft.
  */
-async function reopenDraft(tx: Db, a: { workspaceId: string; postId: string; actor: string; role: Role }, fields: { title: string; body: string }) {
+async function reopenDraft(tx: Db, a: { workspaceId: string; postId: string; actor: string; role: Role }, fields: { title: string; body: string; firstComment: string | null }) {
   const [post] = await tx.select().from(posts).where(and(eq(posts.id, a.postId), eq(posts.workspaceId, a.workspaceId)));
   if (!post) throw new ComposeError('找不到這篇草稿，請重新整理後再試。');
   if (!isManager(a.role) && post.createdBy !== a.actor) throw new ComposeError('只有作者、擁有者或管理員可以修改這篇草稿。');
@@ -195,8 +208,9 @@ export async function saveDraft(db: Db, input: DraftInput) {
   const accounts = await db.select().from(connectedAccounts)
     .where(and(eq(connectedAccounts.workspaceId, input.workspaceId), inArray(connectedAccounts.id, input.accountIds)));
   if (accounts.length !== new Set(input.accountIds).size) throw new ComposeError('有帳號不屬於這個工作區，請重新整理後再試。');
+  const firstComment = commentOf(input);
   return db.transaction(async (tx) => {
-    const fields = { title: titleOf(input), body: input.body.trim() };
+    const fields = { title: titleOf(input), body: input.body.trim(), firstComment };
     const post = input.postId
       ? await reopenDraft(tx, { ...input, postId: input.postId }, fields)
       : (await tx.insert(posts).values({ workspaceId: input.workspaceId, ...fields, createdBy: input.actor }).returning())[0]!;
@@ -267,7 +281,7 @@ export async function updatePost(db: Db, input: UpdateInput) {
     const runAts = input.schedule.mode === 'keep' ? null : runAtsFor(accounts, input.schedule, input.viewerTimeZone, now);
     const approved = manager || !row.workspace.requiresReview;
 
-    await tx.update(posts).set({ title: titleOf(input), body: input.body.trim() }).where(eq(posts.id, row.post.id));
+    await tx.update(posts).set({ title: titleOf(input), body: input.body.trim(), firstComment: commentOf(input) }).where(eq(posts.id, row.post.id));
     for (const t of tasks) {
       await tx.update(postVariants).set({ body: textFor(input, t.account.id), media: input.media, reviewStatus: approved ? 'approved' : 'pending' }).where(eq(postVariants.id, t.variantId));
       // A retry already counted against the old content does not carry over.

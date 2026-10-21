@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { channelAccount, channelCounts, channelItems } from '../src/channel';
 import { accountContext, encrypt } from '../src/crypto';
-import { auditLog, connectedAccounts, postVariants, publishTasks } from '../src/db/index';
+import { auditLog, connectedAccounts, postVariants, posts, publishTasks } from '../src/db/index';
 import { ComposeError, createPost, listDrafts, saveDraft, updatePost } from '../src/posts';
 import { bootstrapWorkspace } from '../src/workspace';
 import { KEY, testDb } from './helpers';
@@ -77,6 +77,20 @@ describe('drafts', () => {
     const { postId: live } = await createPost(db, { workspaceId: ws.id, ...asOwner, body: 'live', accountIds: [fb], media: [], schedule: LATER, now: NOW });
     await expect(saveDraft(db, { workspaceId: ws.id, ...asOwner, postId: live, body: 'x', accountIds: [fb], media: [] })).rejects.toThrow(/已經排程/);
     expect(await db.select().from(publishTasks)).toHaveLength(1);
+  });
+});
+
+describe('first comment', () => {
+  it('is kept trimmed through a draft and its scheduling, and refused when too long', async () => {
+    const { db, ws, fb } = await setup();
+    const { postId } = await saveDraft(db, { workspaceId: ws.id, ...asOwner, body: 'x', firstComment: '  看留言  ', accountIds: [fb], media: [] });
+    expect((await listDrafts(db, { workspaceId: ws.id }))[0]!.post.firstComment).toBe('看留言');
+    await createPost(db, { workspaceId: ws.id, ...asOwner, body: 'x', firstComment: '看留言', accountIds: [fb], media: [], schedule: LATER, now: NOW, draftId: postId });
+    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
+    expect(post!.firstComment).toBe('看留言');
+    await expect(createPost(db, { workspaceId: ws.id, ...asOwner, body: 'y', firstComment: 'a'.repeat(2201), accountIds: [fb], media: [], schedule: LATER, now: NOW })).rejects.toThrow(/2200/);
+    await createPost(db, { workspaceId: ws.id, ...asOwner, body: 'z', firstComment: '   ', accountIds: [fb], media: [], schedule: LATER, now: NOW });
+    expect((await db.select().from(posts)).find((p) => p.body === 'z')!.firstComment).toBeNull();
   });
 });
 

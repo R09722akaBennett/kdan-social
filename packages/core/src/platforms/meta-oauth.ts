@@ -11,15 +11,18 @@ export const META_SCOPES = [
   'business_management',
   'instagram_basic',
   'instagram_content_publish',
-  // The rest only feed analytics, so a connection without them still publishes.
+  // The rest are optional, so a connection without them still publishes.
   // Listing a Page's posts and reading their reactions and comments needs this one.
   'pages_read_user_content',
   'read_insights',
   'instagram_manage_insights',
+  // Only the first comment needs these; posts still go out without them.
+  'pages_manage_engagement',
+  'instagram_manage_comments',
 ];
 
-/** Scopes without which a connected account can still publish, only with fewer numbers. */
-export const OPTIONAL_META_SCOPES = ['pages_read_user_content', 'read_insights', 'instagram_manage_insights'];
+/** Scopes without which a connected account can still publish, only with fewer numbers and no first comment. */
+export const OPTIONAL_META_SCOPES = ['pages_read_user_content', 'read_insights', 'instagram_manage_insights', 'pages_manage_engagement', 'instagram_manage_comments'];
 
 export type MetaGrant = { pages: MetaPage[]; missing: string[] };
 

@@ -133,3 +133,43 @@ describe('dispatchDue', () => {
     expect(lines.join('\n')).not.toContain('secret-page-token');
   });
 });
+
+describe('first comment', () => {
+  it('comments on the post once it is published and keeps the comment id', async () => {
+    const db = await testDb();
+    const { task } = await seed(db, { publishing: true, firstComment: '連結在這裡 https://kdan.com' });
+    const f = fakeFetch()
+      .on('POST', /page-1\/feed$/, { body: { id: 'page-1_42' } })
+      .on('POST', /page-1_42\/comments$/, { body: { id: 'page-1_42_7' } });
+    expect((await run(db, f)).summary.published).toBe(1);
+    expect(f.calls.map((c) => c.url.split('/').slice(-2).join('/'))).toEqual(['page-1/feed', 'page-1_42/comments']);
+    expect(new URLSearchParams(f.calls[1]!.body).get('message')).toBe('連結在這裡 https://kdan.com');
+    expect(await taskOf(db, task.id)).toMatchObject({ status: 'published', externalPostId: 'page-1_42', commentId: 'page-1_42_7', commentError: null });
+  });
+
+  it('keeps the post published and says why when the comment is refused, without posting again', async () => {
+    const db = await testDb();
+    const { task } = await seed(db, { publishing: true, firstComment: '第一則' });
+    const f = fakeFetch()
+      .on('POST', /page-1\/feed$/, { body: { id: 'page-1_42' } })
+      .on('POST', /comments$/, { status: 403, body: { error: { message: '(#200) Requires pages_manage_engagement permission', code: 200 } } });
+    const { summary, lines } = await run(db, f);
+    expect(summary.published).toBe(1);
+    expect(f.calls.filter((c) => c.url.endsWith('/feed'))).toHaveLength(1);
+    const t = await taskOf(db, task.id);
+    expect(t).toMatchObject({ status: 'published', externalPostId: 'page-1_42', commentId: null });
+    expect(t.commentError).toMatch(/pages_manage_engagement/);
+    expect(lines.at(-1)).toMatch(/first comment failed/);
+    // A refused comment is not an expired account.
+    expect((await db.select().from(connectedAccounts))[0]!.status).toBe('active');
+  });
+
+  it('only says it would comment during a dry run', async () => {
+    const db = await testDb();
+    await seed(db, { publishing: false, firstComment: '第一則' });
+    const f = fakeFetch();
+    const { lines } = await run(db, f);
+    expect(f.calls).toHaveLength(0);
+    expect(lines[0]).toMatch(/^\[dry-run\] Will publish .* and leave its first comment$/);
+  });
+});

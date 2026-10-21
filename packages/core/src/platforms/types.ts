@@ -45,6 +45,13 @@ export interface PlatformClient<C = Credentials> {
    *   PlatformError: classified so the caller knows whether a retry is safe.
    */
   publish(account: AccountRef<C>, input: PublishInput): Promise<PublishResult>;
+  /**
+   * Comment on a post this account just published; absent where the platform has no comments.
+   *
+   * Raises:
+   *   PlatformError: as `publish`; never retried, since the post itself is already out.
+   */
+  comment?(account: AccountRef<C>, externalPostId: string, text: string): Promise<{ externalCommentId: string }>;
   /** Current follower count, or null when the platform has no number for that day yet. */
   followers(account: AccountRef<C>, now: Date): Promise<number | null>;
   /** The post's numbers so far, read with the same credentials it was published with. */

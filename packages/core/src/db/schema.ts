@@ -142,6 +142,8 @@ export const posts = pgTable('posts', {
   body: text('body'),
   // Email of whoever wrote it, shown to reviewers. Null on posts created before this was kept.
   createdBy: text('created_by'),
+  // Left under the post on Facebook and Instagram once it is out; LINE has no comments.
+  firstComment: text('first_comment'),
   createdAt: createdAt(),
 });
 
@@ -187,6 +189,10 @@ export const publishTasks = pgTable(
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     externalPostId: text('external_post_id'),
+    // The first comment's outcome. A failed comment leaves the post published: retrying
+    // the publish to get the comment through would post it twice.
+    commentId: text('comment_id'),
+    commentError: text('comment_error'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: createdAt(),

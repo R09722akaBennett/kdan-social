@@ -89,6 +89,7 @@ export async function reviewDetail(db: Db, a: { workspaceId: string; postId: str
         accountStatus: connectedAccounts.status, timeZone: connectedAccounts.timeZone, groupName: accountGroups.name,
         body: postVariants.body, media: postVariants.media, review: postVariants.reviewStatus,
         runAt: publishTasks.runAt, taskStatus: publishTasks.status, lastError: publishTasks.lastError, externalPostId: publishTasks.externalPostId,
+        commentId: publishTasks.commentId, commentError: publishTasks.commentError,
         // Known once the nightly import has read the post back from the account.
         permalink: accountPosts.permalink,
       })

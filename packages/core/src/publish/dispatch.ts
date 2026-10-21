@@ -97,8 +97,11 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
   const { task, variant, post, account, workspace } = row;
   const where = `"${post.title}" to ${account.platform} ${account.name}`;
 
-  const finish = async (status: 'published' | 'dry_run' | 'failed' | 'needs_check' | 'missed', fields: { lastError?: string; externalPostId?: string } = {}) => {
-    await db.update(publishTasks).set({ status, finishedAt: now, lastError: fields.lastError ?? null, externalPostId: fields.externalPostId ?? null }).where(eq(publishTasks.id, taskId));
+  const finish = async (status: 'published' | 'dry_run' | 'failed' | 'needs_check' | 'missed', fields: { lastError?: string; externalPostId?: string; commentId?: string; commentError?: string } = {}) => {
+    await db.update(publishTasks).set({
+      status, finishedAt: now, lastError: fields.lastError ?? null, externalPostId: fields.externalPostId ?? null,
+      commentId: fields.commentId ?? null, commentError: fields.commentError ?? null,
+    }).where(eq(publishTasks.id, taskId));
     await db.insert(auditLog).values({
       workspaceId: workspace.id,
       actor: 'system:dispatcher',
@@ -126,8 +129,10 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
     log(`Failed ${where}: account authorization is ${account.status}`);
     return finish('failed', { lastError: 'The account authorization has expired; reconnect the account' });
   }
+  const client = opts.clients[account.platform] as PlatformClient<unknown>;
+  const comment = post.firstComment && client.comment ? post.firstComment : null;
   if (!publishingAllowed(opts.globalEnabled, workspace)) {
-    log(`[dry-run] Will publish ${where} with ${variant.media.length} media item(s)`);
+    log(`[dry-run] Will publish ${where} with ${variant.media.length} media item(s)${comment ? ' and leave its first comment' : ''}`);
     return finish('dry_run');
   }
 
@@ -145,14 +150,13 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
     return finish('failed', { lastError: message });
   }
 
-  const client = opts.clients[account.platform] as PlatformClient<unknown>;
+  let res: { externalPostId: string };
   try {
-    const res = await client.publish(
+    res = await client.publish(
       { externalId: account.externalId, credentials },
       { body: variant.body, media: variant.media, idempotencyKey: taskId },
     );
     log(`Published ${where} as ${res.externalPostId}`);
-    return finish('published', { externalPostId: res.externalPostId });
   } catch (e) {
     if (!(e instanceof PlatformError)) {
       // An unexpected error may come after the platform accepted the post.
@@ -178,5 +182,18 @@ async function runOne(opts: DispatchOptions, taskId: string, now: Date, log: (li
       case 'unknown_outcome':
         return finish('needs_check', { lastError: e.message });
     }
+  }
+
+  if (!comment) return finish('published', { externalPostId: res.externalPostId });
+  try {
+    const { externalCommentId } = await client.comment!({ externalId: account.externalId, credentials }, res.externalPostId, comment);
+    log(`Left the first comment on ${where} as ${externalCommentId}`);
+    return finish('published', { externalPostId: res.externalPostId, commentId: externalCommentId });
+  } catch (e) {
+    // The post is out either way, so this is recorded and shown, never retried.
+    const message = e instanceof Error ? e.message : String(e);
+    log(`Published ${where} but its first comment failed: ${message}`);
+    await notify(db, { workspaceId: workspace.id, kind: 'publish.comment_failed', title: `「${post.title}」已發到 ${account.name}，但第一則留言沒有留上去`, body: message, href: `/app/posts/${post.id}`, emails: [post.createdBy], managers: true });
+    return finish('published', { externalPostId: res.externalPostId, commentError: message });
   }
 }
