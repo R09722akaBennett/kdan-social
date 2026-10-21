@@ -17,6 +17,8 @@ function reason(message: string, status?: number) {
   if (/invalid login credentials/i.test(message)) return 'Email 或密碼不正確。';
   if (/already registered|already exists/i.test(message)) return '這個 Email 已經註冊過了，請直接登入。';
   if (/email not confirmed/i.test(message)) return '這個 Email 還沒有完成驗證。';
+  // "Email signups are disabled" / "Email logins are disabled": the provider is off in Supabase.
+  if (/disabled/i.test(message)) return '目前沒有開放 Email 註冊和登入，請聯絡管理員。';
   if (/password/i.test(message)) return '密碼不符合規則，請換一組。';
   return '沒有完成，請稍後再試。';
 }
@@ -75,11 +77,12 @@ export async function sendResetAction(_prev: AuthState, formData: FormData): Pro
   if (!EMAIL.test(email)) return { error: 'Email 格式不正確。', email };
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${appUrl()}/auth/callback?next=/reset-password` });
+  // Supabase already answers success for an address with no account, so an error here is a
+  // real failure (provider off, rate limit, mail not sent) and saying "sent" would hide it.
   if (error) {
     console.error(`Password reset for ${email} failed: ${error.message}`);
-    if (error.status === 429) return { error: reason(error.message, 429), email };
+    return { error: reason(error.message, error.status), email };
   }
-  // The same answer whether or not the address has an account, so the page cannot be used to probe.
   return { sent: email };
 }
 
