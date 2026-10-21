@@ -245,6 +245,25 @@ export const notifications = pgTable(
   (t) => [index('notifications_recipient').on(t.userId, t.workspaceId, t.createdAt)],
 );
 
+export const ideaStatus = pgEnum('idea_status', ['unassigned', 'todo', 'in_progress', 'done']);
+
+// Content not yet written as a post, on a board the whole workspace shares, after Buffer's Ideas.
+export const ideas = pgTable(
+  'ideas',
+  {
+    id: id(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    status: ideaStatus('status').notNull().default('unassigned'),
+    createdBy: text('created_by').notNull(),
+    createdAt: createdAt(),
+    // Cards in a column are ordered by when they were last moved or edited, newest first.
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ideas_board').on(t.workspaceId, t.status, t.updatedAt)],
+);
+
 // A member's own conversations with the AI assistant; nobody else in the workspace sees them.
 export const aiConversations = pgTable(
   'ai_conversations',

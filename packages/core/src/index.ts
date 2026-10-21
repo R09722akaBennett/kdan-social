@@ -19,6 +19,7 @@ export { META_SCOPES, OPTIONAL_META_SCOPES, metaLoginUrl, exchangeCodeForPages, 
 export * from './workspace';
 export * from './posts';
 export * from './channel';
+export * from './ideas';
 export * from './time';
 export * from './overview';
 export * from './groups';
