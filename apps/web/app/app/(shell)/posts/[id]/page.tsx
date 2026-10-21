@@ -2,7 +2,7 @@ import { formatInZone, reviewDetail } from '@kdan-social/core';
 import { notFound } from 'next/navigation';
 import type { CSSProperties } from 'react';
 import { ConfirmSubmit } from '@/components/confirm';
-import { Chip, commentErrorText, GroupTag, Pf, PLATFORM, errorText, zoneName } from '@/components/ui';
+import { Chip, commentErrorText, GroupTag, Pf, PLATFORM, errorText, fmtN, zoneName } from '@/components/ui';
 import { requireWorkspace } from '@/lib/auth';
 import { getDb } from '@/lib/server';
 import { cancelPostAction } from '@/app/app/actions';
@@ -13,6 +13,14 @@ const TASK: Record<string, ['ok' | 'plan' | 'warn' | 'err' | 'neutral', string]>
   failed: ['err', '失敗'], needs_check: ['warn', '需人工確認'], missed: ['warn', '未核准，已略過'], cancelled: ['neutral', '已取消'],
 };
 const REVIEW: Record<string, ['ok' | 'warn' | 'err', string]> = { approved: ['ok', '已核准'], pending: ['warn', '待審核'], changes_requested: ['err', '要求修改'] };
+// Each platform's own counts, in the order a reader looks for them; unknown keys show as is.
+const METRIC: Record<string, string> = {
+  reactions: '心情', likes: '讚', comments: '留言', shares: '分享', saved: '收藏', follows: '追蹤', profile_visits: '個人檔案瀏覽',
+  delivered: '送達', opens: '開啟', clicks: '點擊',
+};
+// Already shown as the headline numbers, or the platform's own total of the rest.
+const HEADLINE = new Set(['reach', 'views', 'total_interactions']);
+
 const ACTION: Record<string, string> = { 'post.created': '建立了貼文', 'post.edited': '修改了貼文', 'post.approved': '核准', 'post.changes_requested': '要求修改', 'post.cancelled': '取消了排程' };
 
 /** Where a published post can be opened: the link read back from the account, or a Facebook URL built from its id. */
@@ -23,6 +31,32 @@ function postLink(platform: string, externalId: string | null, permalink: string
     return `https://www.facebook.com/${page}/posts/${post}`;
   }
   return null;
+}
+
+/**
+ * One account's numbers for this post, after the post insights Buffer opens from a sent
+ * post: reach, views and engagements first, then the platform's own counts.
+ */
+function PostNumbers({ m, tz }: { m: { engagements: number | null; reach: number | null; views: number | null; detail: Record<string, number | null>; insights: Record<string, number | null>; fetchedAt: Date } | null; tz: string }) {
+  if (!m) return <div className="tiny muted post-numbers-note">數字每天凌晨更新，發出後隔天會出現。</div>;
+  const order = Object.keys(METRIC);
+  const rank = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
+  const extra = Object.entries({ ...m.detail, ...m.insights }).filter(([k, val]) => !HEADLINE.has(k) && val != null).sort(([a], [b]) => rank(a) - rank(b));
+  return (
+    <div className="post-numbers">
+      <dl className="post-numbers-head">
+        {([['觸及', m.reach], ['觀看', m.views], ['互動', m.engagements]] as const).map(([k, val]) => (
+          <div key={k}><dt>{k}</dt><dd className="num">{val == null ? '—' : fmtN(val)}</dd></div>
+        ))}
+      </dl>
+      {extra.length > 0 && (
+        <dl className="post-numbers-rest">
+          {extra.map(([k, val]) => <div key={k}><dt>{METRIC[k] ?? k}</dt><dd className="num">{fmtN(val!)}</dd></div>)}
+        </dl>
+      )}
+      <div className="tiny muted">更新於 {formatInZone(m.fetchedAt, tz)}；— 表示平台沒有提供這個數字</div>
+    </div>
+  );
 }
 
 // After Hootsuite's scheduled-post panel (edit and delete beside the preview) and
@@ -94,6 +128,7 @@ export default async function PostDetail({ params, searchParams }: { params: Pro
                 {v.commentError && <span className="tiny" style={{ color: 'var(--warn)' }}>{commentErrorText(v.commentError)}</span>}
                 {v.commentId && <span className="tiny muted">已留下第一則留言</span>}
               </div>
+              {v.taskStatus === 'published' && <PostNumbers m={v.metrics} tz={v.timeZone} />}
             </div>
           );
         })}

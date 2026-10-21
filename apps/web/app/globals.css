@@ -403,3 +403,23 @@ th:last-child, td:last-child { padding-right: 18px; }
 .idea-actions .icon-btn { width: 30px; min-height: 30px; height: 30px; padding: 0; justify-content: center; }
 .idea-empty { padding: 8px 4px; }
 .template-card { gap: 10px; }
+
+/* One account's numbers on a post page. */
+.post-numbers { border-top: 1px solid var(--line-soft); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--sunken); }
+.post-numbers dl { margin: 0; display: grid; gap: 8px; }
+.post-numbers dt { font-size: 12px; color: var(--ink-3); }
+.post-numbers dd { margin: 2px 0 0; font-weight: 600; }
+.post-numbers-head { grid-template-columns: repeat(3, 1fr); }
+.post-numbers-head dd { font-size: 20px; }
+.post-numbers-rest { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+.post-numbers-note { border-top: 1px solid var(--line-soft); padding: 10px 14px; }
+
+/* Instagram grid preview, after Instagram's own profile grid: square tiles, hairline gaps. */
+.ig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; max-width: 620px; }
+.ig-cell { position: relative; aspect-ratio: 1; background: var(--sunken); overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--ink-2); }
+.ig-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ig-cell[data-upcoming='true'] img, .ig-cell[data-upcoming='true'] .ig-cell-text { opacity: .55; }
+.ig-cell-text { padding: 10px; font-size: 12px; line-height: 1.4; overflow: hidden; }
+.ig-cell-when { position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; background: rgba(16, 24, 40, .75); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ig-cell-many { position: absolute; right: 6px; top: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: rgba(16, 24, 40, .75); color: #fff; font-size: 11px; text-align: center; }
+.ig-cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; }

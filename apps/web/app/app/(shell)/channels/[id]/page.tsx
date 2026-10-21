@@ -46,17 +46,23 @@ function dayHeading(at: Date, timeZone: string, now: Date) {
  * One account's posts, after Buffer's channel view: tabs for what is scheduled, drafted,
  * waiting for review and sent, each listed by day on the account's own clock.
  */
-export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; notice?: string }> }) {
+export default async function Channel({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; view?: string; notice?: string }> }) {
   const [{ id }, sp, { workspace }] = await Promise.all([params, searchParams, requireWorkspace()]);
   const db = getDb();
   const account = await channelAccount(db, { workspaceId: workspace.id, accountId: id });
   if (!account) notFound();
   const tab = (TABS.some((t) => t.key === sp.tab) ? sp.tab : 'queue') as ChannelTab;
-  const [counts, items, groups] = await Promise.all([
+  // Only Instagram shows posts as a grid, so only its page offers the view.
+  const grid = account.platform === 'instagram' && sp.view === 'grid';
+  const [counts, items, groups, gridItems] = await Promise.all([
     channelCounts(db, { workspaceId: workspace.id, accountId: id }),
     channelItems(db, { workspaceId: workspace.id, accountId: id, tab }),
     listGroups(db, workspace.id),
+    grid ? Promise.all((['queue', 'approvals', 'sent'] as const).map((t) => channelItems(db, { workspaceId: workspace.id, accountId: id, tab: t }))) : null,
   ]);
+  // The feed as it will look: the latest scheduled post top left, then back through what went out.
+  const [queued = [], waiting = [], sent = []] = gridItems ?? [];
+  const feed = [...[...queued, ...waiting].sort((x, y) => (y.runAt?.getTime() ?? 0) - (x.runAt?.getTime() ?? 0)), ...sent];
   const tz = account.timeZone;
   const group = groups.find((g) => g.id === account.groupId)?.name;
   const now = new Date();
@@ -83,9 +89,43 @@ export default async function Channel({ params, searchParams }: { params: Promis
             <div className="sub">{group ? `${group} · ` : ''}{zoneName(tz)} {localTime(tz)}{account.status !== 'active' ? ' · 授權已失效' : ''}</div>
           </div>
         </div>
-        <Link href={`/app/posts/new?account=${account.id}`} className="btn btn-primary"><Icon name="plus" size={16} stroke={2} />新增貼文</Link>
+        <div className="row">
+          {account.platform === 'instagram' && (
+            <div className="seg" role="group" aria-label="顯示方式">
+              <Link href={`/app/channels/${account.id}?tab=${tab}`} aria-pressed={!grid}>清單</Link>
+              <Link href={`/app/channels/${account.id}?view=grid`} aria-pressed={grid}>格狀</Link>
+            </div>
+          )}
+          {/* After Buffer's per-channel Insights: the same numbers page, scoped to this account. */}
+          <Link href={`/app/analytics?account=${account.id}`} className="btn"><Icon name="chart" size={16} />看成效</Link>
+          <Link href={`/app/posts/new?account=${account.id}`} className="btn btn-primary"><Icon name="plus" size={16} stroke={2} />新增貼文</Link>
+        </div>
       </header>
 
+      {grid && (
+        <section aria-label="格狀預覽" className="stack" style={{ gap: 10 }}>
+          <div className="small muted">照 Instagram 個人檔案的排法：最晚排定的在左上，接著是已經發出的。半透明的是還沒發的貼文。</div>
+          {feed.length === 0 ? (
+            <div className="card"><EmptyState icon="calendar" title="還沒有貼文可以預覽" action={<Link href={`/app/posts/new?account=${account.id}`} className="btn btn-sm">新增貼文</Link>}>排程或發出的 IG 貼文會照順序排在這裡。</EmptyState></div>
+          ) : (
+            <div className="ig-grid">
+              {feed.map((item) => {
+                const img = item.media[0];
+                const upcoming = item.status === 'scheduled' || item.status === 'running';
+                return (
+                  <Link key={item.postId} href={`/app/posts/${item.postId}`} className="ig-cell" data-upcoming={upcoming} aria-label={`${item.title}${upcoming && item.runAt ? `，${dayInZone(item.runAt, tz)} ${clockInZone(item.runAt, tz)} 發出` : ''}`}>
+                    {img ? <img src={img.previewUrl ?? img.url} alt={img.alt ?? ''} /> : <span className="ig-cell-text">{item.body.slice(0, 80)}</span>}
+                    {upcoming && item.runAt && <span className="ig-cell-when">{dayInZone(item.runAt, tz)} {clockInZone(item.runAt, tz)}</span>}
+                    {item.media.length > 1 && <span className="ig-cell-many" aria-hidden="true">{item.media.length}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!grid && <>
       <nav className="channel-tabs" aria-label="貼文分類">
         {TABS.map((t) => (
           <Link key={t.key} href={`/app/channels/${account.id}?tab=${t.key}`} aria-current={t.key === tab ? 'page' : undefined}>
@@ -138,6 +178,7 @@ export default async function Channel({ params, searchParams }: { params: Promis
           ))}
         </div>
       )}
+      </>}
     </main>
   );
 }

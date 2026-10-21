@@ -1,4 +1,5 @@
 import { aiConfigured, audienceFor, dailyTotals, followerSeries, formatInZone, IMPORT_WINDOW_DAYS, listAccounts, listGroups, performanceRows, type PerformanceRow, type Totals } from '@kdan-social/core';
+import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { BarList } from '@/components/barlist';
 import { TrendChart } from '@/components/charts';
@@ -35,7 +36,7 @@ function postRate(p: PerformanceRow, followers: number | null) {
 
 // Tabs after Later's Overview / Post Performance / Audience; overview cards and the trend
 // after X's account overview; audience bars after Pinterest's audience insights.
-export default async function Analytics({ searchParams }: { searchParams: Promise<{ days?: string; group?: string | string[]; tab?: string; sort?: string }> }) {
+export default async function Analytics({ searchParams }: { searchParams: Promise<{ days?: string; group?: string | string[]; tab?: string; sort?: string; account?: string }> }) {
   const { workspace } = await requireWorkspace();
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
@@ -46,21 +47,25 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const db = getDb();
   const now = new Date();
   const from = new Date(now.getTime() - days * 86_400_000);
-  const [groups, accounts, series, totals, perf, audience] = await Promise.all([
+  // Opened from an account's page: only that account, and the group filter steps aside.
+  const accounts = await listAccounts(db, workspace.id);
+  const only = accounts.find((a) => a.id === sp.account);
+  const scope = only ? { accountId: only.id } : { groupIds };
+  const [groups, series, totals, perf, audience] = await Promise.all([
     listGroups(db, workspace.id),
-    listAccounts(db, workspace.id),
     followerSeries(db, { workspaceId: workspace.id, days, now }),
-    dailyTotals(db, { workspaceId: workspace.id, from, to: now, groupIds }),
-    performanceRows(db, { workspaceId: workspace.id, from, groupIds }),
-    audienceFor(db, { workspaceId: workspace.id, groupIds }),
+    dailyTotals(db, { workspaceId: workspace.id, from, to: now, ...scope }),
+    performanceRows(db, { workspaceId: workspace.id, from, ...scope }),
+    audienceFor(db, { workspaceId: workspace.id, ...scope }),
   ]);
-  const shown = accounts.filter((a) => filter.length === 0 || filter.includes(a.groupId ?? 'none'));
+  const shown = only ? [only] : accounts.filter((a) => filter.length === 0 || filter.includes(a.groupId ?? 'none'));
   const groupName = (id: string | null) => groups.find((g) => g.id === id)?.name ?? null;
   const latest = (id: string) => series.get(id)?.at(-1)?.followers ?? null;
   const href = (p: Partial<{ days: number; tab: string; sort: string }>) => {
     const q = new URLSearchParams({ days: String(p.days ?? days), tab: p.tab ?? tab });
     if ((p.sort ?? (tab === 'posts' ? sort : '')) && (p.tab ?? tab) === 'posts') q.set('sort', p.sort ?? sort);
-    for (const g of filter) q.append('group', g);
+    if (only) q.set('account', only.id);
+    else for (const g of filter) q.append('group', g);
     return `/app/analytics?${q}`;
   };
   const c = totals.current;
@@ -75,11 +80,14 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     <main className="main">
       <header className="page-head">
         <div>
-          <h1>成效</h1>
+          {only && <div className="small"><Link href={`/app/channels/${only.id}`}>{only.name}</Link> / 成效</div>}
+          <h1>{only ? `${only.name} 的成效` : '成效'}</h1>
           <div className="sub">近 {days} 天 · {shown.length} 個帳號 · 每天凌晨更新；IG 的數字最多晚 48 小時</div>
         </div>
         <div className="row">
-          <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />
+          {only
+            ? <Link href={`/app/analytics?days=${days}&tab=${tab}`} className="btn btn-sm">看全部帳號</Link>
+            : <FilterMenu label="群組" options={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: '未分組' }]} />}
           <SegLinks label="期間" items={[7, 30, 90].map((d) => ({ href: href({ days: d }), text: `${d} 天`, on: d === days }))} />
         </div>
       </header>
