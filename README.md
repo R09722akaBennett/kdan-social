@@ -10,6 +10,8 @@
 - [平台能力與限制](docs/platform-research.md)：各平台 API 能做什麼、多帳號怎麼接、Meta 審核流程
 - [Roadmap](docs/roadmap.md)：demo → 開放品牌的階段規劃與待確認事項
 - [部署](docs/deploy.md)：Vercel Hobby ＋ Supabase 的設定步驟與排程觸發方式
+- [Meta app 正式化](docs/meta-app-review.md)：移轉到 KDAN 商業帳號、商業驗證、App Review 要準備的事與權限清單
+- [商用部署的選擇](DEPLOYMENT.md)：Vercel、Cloud Run、全 GCP 三種方案的取捨，與不走 App Review 的單一客戶 Meta token
 
 ## 開發
 
