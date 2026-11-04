@@ -17,7 +17,7 @@
 
 ```bash
 pnpm install
-cp .env.example .env            # 填入 KDAN_SOCIAL_SECRET_KEY 與 CRON_SECRET
+cp .env.example .env            # 填入 KDAN_SOCIAL_SECRET_KEY、CRON_SECRET 與 Supabase 的三個變數（每個頁面都會檢查登入，沒填網站打不開）
 docker run --rm -d --name kdan-social-pg -e POSTGRES_PASSWORD=dev -p 54329:5432 postgres:17
 pnpm --filter @kdan-social/core db:migrate
 pnpm --filter @kdan-social/core db:seed-dev   # 只接受 localhost 的資料庫
